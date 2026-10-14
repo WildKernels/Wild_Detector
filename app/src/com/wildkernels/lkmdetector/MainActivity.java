@@ -7,6 +7,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.Gravity;
+import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -28,12 +30,14 @@ public class MainActivity extends Activity {
     private native String nativeP6();
     private native String nativeP7();
     private native String nativeVerdict();
+    private native int nativeFindings();
 
     private interface Probe { String run(); }
 
     private TextView log;
     private ScrollView scroll;
     private Button btn;
+    private TextView banner;
     private Handler ui;
     private final StringBuilder fullLog = new StringBuilder();
 
@@ -59,16 +63,27 @@ public class MainActivity extends Activity {
         scroll.setBackgroundColor(Color.parseColor("#101010"));
         scroll.addView(log);
 
+        banner = new TextView(this);
+        banner.setTextSize(17f);
+        banner.setTypeface(Typeface.DEFAULT_BOLD);
+        banner.setTextColor(Color.WHITE);
+        banner.setGravity(Gravity.CENTER);
+        banner.setPadding(24, 30, 24, 30);
+        banner.setVisibility(View.GONE);
+        banner.setOnClickListener(v -> banner.setVisibility(View.GONE));
+
         btn.setOnClickListener(v -> runScan());
         root.addView(btn);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        root.addView(banner, new LinearLayout.LayoutParams(-1, -2));
         setContentView(root);
 
         append("LKMDet - non-root susfs LKM detector\n\n");
         append(callSafe("banner") + "\n");
         append("Probes: placeholder / mprotect-race / taint / modules /\n");
         append("        kallsyms / O_PATH / timing. Zero permissions, zero root.\n");
-        append("The race probe runs ~10s. Tap RUN SCAN.\n\n");
+        append("The race probe runs ~10s. Tap RUN SCAN.\n");
+        append("Result appears as a PASS/DETECTED bar at the bottom (tap to hide).\n\n");
     }
 
     private String callSafe(String what) {
@@ -82,6 +97,7 @@ public class MainActivity extends Activity {
     private void runScan() {
         btn.setEnabled(false);
         btn.setText("scanning...");
+        banner.setVisibility(View.GONE);
         new Thread(() -> {
             try {
                 step("[P1] placeholder scan (raw getdents64, zero-ino)", () -> nativeP1());
@@ -95,6 +111,9 @@ public class MainActivity extends Activity {
                 String v = nativeVerdict();
                 Log.i("LKMDET", v);
                 post(v + "\n");
+                int cls = 0;
+                try { cls = nativeFindings(); } catch (Throwable t) { Log.w("LKMDET", "findings failed", t); }
+                showVerdict(cls);
                 saveLog();
             } catch (Throwable t) {
                 post("\n!! scan crashed: " + t + "\n");
@@ -102,6 +121,37 @@ public class MainActivity extends Activity {
                 ui.post(() -> { btn.setEnabled(true); btn.setText("RUN SCAN"); });
             }
         }).start();
+    }
+
+    private void showVerdict(final int cls) {
+        final String text;
+        final int color;
+        switch (cls) {
+            case 1:
+                text = "DETECTED - susfs LKM on this device";
+                color = Color.parseColor("#C62828");
+                break;
+            case 2:
+                text = "DETECTED - built-in susfs symbols visible (fix defconfig)";
+                color = Color.parseColor("#C62828");
+                break;
+            case 3:
+                text = "DETECTED - unsigned out-of-tree module loaded (taint O/E)";
+                color = Color.parseColor("#C62828");
+                break;
+            default:
+                text = "PASS - no susfs LKM detected";
+                color = Color.parseColor("#2E7D32");
+                break;
+        }
+        Log.i("LKMDET", "verdict class " + cls + ": " + text);
+        ui.post(() -> {
+            banner.setText(text);
+            banner.setBackgroundColor(color);
+            banner.setAlpha(0f);
+            banner.setVisibility(View.VISIBLE);
+            banner.animate().alpha(1f).setDuration(250).start();
+        });
     }
 
     private void step(String title, Probe p) {
@@ -125,7 +175,7 @@ public class MainActivity extends Activity {
             w.write(fullLog.toString());
             w.close();
             Log.i("LKMDET", "saved " + f);
-            ui.post(() -> Toast.makeText(this, "Saved: " + f, Toast.LENGTH_LONG).show());
+            ui.post(() -> Toast.makeText(this, "Result log saved", Toast.LENGTH_SHORT).show());
         } catch (Exception e) {
             Log.w("LKMDET", "save failed", e);
         }

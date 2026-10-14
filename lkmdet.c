@@ -727,4 +727,21 @@ Java_com_wildkernels_lkmdetector_MainActivity_nativeP7(JNIEnv *env, jobject th)
 JNIEXPORT jstring JNICALL
 Java_com_wildkernels_lkmdetector_MainActivity_nativeVerdict(JNIEnv *env, jobject th)
 { (void)th; return run_probe_jni(env, run_verdict); }
+
+/* 0 = clean PASS, 1 = susfs LKM detected, 2 = built-in symbols exposed,
+ * 3 = unsigned out-of-tree module (taint O/E only) */
+static int findings_class(void)
+{
+	if (g_ph_total || g_race_hit || g_opath_weird || g_ks_lkm > 0 || g_mod_hits)
+		return 1;
+	if (g_ks_total > 0)
+		return 2;
+	if (g_oot || g_unsign)
+		return 3;
+	return 0;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_wildkernels_lkmdetector_MainActivity_nativeFindings(JNIEnv *env, jobject th)
+{ (void)th; return findings_class(); }
 #endif
