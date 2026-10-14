@@ -40,8 +40,17 @@ jobs:
           SM="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
           echo "sdkmanager: $SM"
           yes | "$SM" --licenses >/dev/null 2>&1 || true
-          "$SM" --install \
-            "platforms;android-34" "build-tools;34.0.0" "ndk;27.1.12296806" \
+          "$SM" --list >/tmp/pkgs 2>/dev/null || true
+          # newest stable of each (google prunes old package versions over time)
+          PLAT=$(grep -vE 'canary|beta|preview|rc' /tmp/pkgs | grep -Eo 'platforms;android-[0-9]+(\.[0-9]+)?' | sort -Vu | tail -1)
+          BT=$(grep -vE 'canary|beta|preview|rc' /tmp/pkgs | grep -Eo 'build-tools;[0-9]+(\.[0-9]+)+' | sort -Vu | tail -1)
+          NDK_PKG=$(grep -vE 'canary|beta|preview|rc' /tmp/pkgs | grep -Eo 'ndk;[0-9]+(\.[0-9]+)+' | sort -Vu | tail -1)
+          if [ -z "$PLAT" ] || [ -z "$BT" ] || [ -z "$NDK_PKG" ]; then
+            echo "::error::package resolution failed (plat='$PLAT' bt='$BT' ndk='$NDK_PKG')"
+            exit 1
+          fi
+          echo "installing: $PLAT $BT $NDK_PKG"
+          "$SM" --install "$PLAT" "$BT" "$NDK_PKG" \
             >/dev/null 2>install.log || { tail -50 install.log; exit 1; }
           echo "SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "NDK_ROOT=$(ls -d "$ANDROID_HOME"/ndk/* | head -1)" >> "$GITHUB_ENV"
