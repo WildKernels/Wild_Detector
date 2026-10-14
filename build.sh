@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-NDK="${NDK:-/opt/android-ndk}"
+NDK="${NDK_ROOT:-${NDK:-/opt/android-ndk}}"
 CC="$(ls "$NDK"/toolchains/llvm/prebuilt/*/bin/aarch64-linux-android24-clang 2>/dev/null | head -n1 || true)"
 if [ ! -x "$CC" ]; then
 	echo "NDK aarch64 clang not found under $NDK" >&2

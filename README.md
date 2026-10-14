@@ -74,6 +74,27 @@ adb shell am start -n com.wildkernels.lkmdetector/.MainActivity
 Both scripts assume NDK at `/opt/android-ndk` and SDK at
 `/opt/android-sdk` (edit the top of each script to move them).
 
+## CI: auto tag + release
+
+`.github/workflows/autotag.yml` — every push to `main` (or manual
+`workflow_dispatch`) builds both frontends, claims the next `vN` tag, and
+publishes a GitHub release with:
+
+- `LKMDet-vN.apk` — signed with the repo secret `LKMDET_KEYSTORE`
+- `lkmdet-vN` — arm64 adb-shell binary
+
+The build runs **before** tagging, so a broken build burns no version
+number. Releases are signed with the repo secret so every release
+installs over the previous one. First-time setup from a fresh clone:
+
+```sh
+./build-apk.sh                    # generates lkmdet.keystore locally
+base64 -w0 lkmdet.keystore | gh secret set LKMDET_KEYSTORE --repo TheWildJames/Wild_Detector
+```
+
+Without the secret the workflow still builds, but with a fresh key per
+run (updates then need an uninstall first).
+
 ## Verdict semantics
 
 - **LKM DETECTED** — placeholder, leak, impossible-state, module-tagged

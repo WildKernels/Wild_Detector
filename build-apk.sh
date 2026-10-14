@@ -3,10 +3,12 @@
 set -e
 cd "$(dirname "$0")"
 
-SDK=/opt/android-sdk
-AJAR="$SDK/platforms/android-37.0/android.jar"
-BT="$SDK/build-tools/37.0.0"
-NDKCC=$(ls /opt/android-ndk/toolchains/llvm/prebuilt/*/bin/aarch64-linux-android24-clang | head -1)
+# Paths: local defaults, CI overrides via SDK_ROOT / NDK_ROOT
+SDK="${SDK_ROOT:-/opt/android-sdk}"
+AJAR=$(ls "$SDK"/platforms/android-*/android.jar | sort -V | tail -1)
+BT=$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)
+NDK="${NDK_ROOT:-/opt/android-ndk}"
+NDKCC=$(ls "$NDK"/toolchains/llvm/prebuilt/*/bin/aarch64-linux-android24-clang | head -1)
 
 echo "[1/7] NDK: liblkmdet.so"
 "$NDKCC" -O2 -Wall -Wextra -pthread -shared -fPIC -DLKMDET_LIBRARY \
