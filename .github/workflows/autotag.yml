@@ -1,0 +1,56 @@
+name: Auto-tag
+
+# On every push to main (or a manual dispatch), claim the next free vN tag
+# and push it. Tag pushes do not re-trigger this workflow (branch filter).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Create and push next tag
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          bump() {
+            latest=$(git tag --list 'v*' --sort=-v:refname \
+                     | grep -E '^v[0-9]+$' | head -1 || true)
+            if [ -z "$latest" ]; then
+              echo v1
+            else
+              echo "v$(( ${latest#v} + 1 ))"
+            fi
+          }
+
+          TAG=$(bump)
+          echo "next tag: $TAG"
+
+          # Claim the number; if a concurrent run won the race, bump again.
+          for attempt in 1 2 3 4 5; do
+            git tag -a "$TAG" -m "Build $TAG"
+            if git push origin "refs/tags/$TAG" 2>/dev/null; then
+              echo "tagged $TAG"
+              exit 0
+            fi
+            echo "v${TAG#v} was claimed by a concurrent run; retrying"
+            git tag -d "$TAG" >/dev/null
+            git fetch --tags origin
+            TAG=$(bump)
+          done
+          echo "::error::could not claim a tag number after 5 attempts"
+          exit 1
