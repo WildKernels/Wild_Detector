@@ -1,0 +1,12 @@
+# build outputs
+build/
+lkmdet
+lkmdet_host
+jniLibs/
+*.o
+
+# release artifacts
+LKMDet.apk
+
+# signing key — never commit
+lkmdet.keystore
