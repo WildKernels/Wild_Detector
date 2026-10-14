@@ -37,8 +37,10 @@ jobs:
       - name: Install platform + build-tools + NDK
         run: |
           set -e
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install \
+          SM="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+          echo "sdkmanager: $SM"
+          yes | "$SM" --licenses >/dev/null 2>&1 || true
+          "$SM" --install \
             "platforms;android-34" "build-tools;34.0.0" "ndk;27.1.12296806" \
             >/dev/null 2>install.log || { tail -50 install.log; exit 1; }
           echo "SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
