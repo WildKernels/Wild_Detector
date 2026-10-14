@@ -4,6 +4,11 @@ name: Auto-tag + release
 # claim the next free vN tag, publish a GitHub release with both assets.
 # Build runs BEFORE tagging so a broken build burns no version number.
 # Tag pushes do not re-trigger this workflow (branch filter).
+#
+# The ubuntu-latest runner image ships the Android SDK with cmdline-tools
+# preinstalled at /usr/local/lib/android/sdk (ANDROID_HOME) — no setup
+# action needed (android-actions/setup-android@v3 is broken: it installs
+# the removed 'tools' package).
 
 on:
   push:
@@ -18,19 +23,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history + tags)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Install platform + build-tools + NDK
         run: |

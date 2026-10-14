@@ -10,3 +10,6 @@ LKMDet.apk
 
 # signing key — never commit
 lkmdet.keystore
+
+# apksigner v4 signature sidecar
+*.idsig
