@@ -11,6 +11,7 @@ NDK="${NDK_ROOT:-/opt/android-ndk}"
 NDKCC=$(ls "$NDK"/toolchains/llvm/prebuilt/*/bin/aarch64-linux-android24-clang | head -1)
 
 echo "[1/7] NDK: liblkmdet.so"
+mkdir -p jniLibs/arm64-v8a
 "$NDKCC" -O2 -Wall -Wextra -pthread -shared -fPIC -DLKMDET_LIBRARY \
     -o jniLibs/arm64-v8a/liblkmdet.so lkmdet.c
 
