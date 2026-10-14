@@ -42,7 +42,9 @@ callers.
   `open(O_PATH)` ok + `fstat → ENOENT` is impossible on a clean kernel;
   fires when the module's non-fatal opath layer failed to install.
 - **P7 syscall latency medians** (INFO): gettid control vs statx vs
-  reboot-with-susfs-magic. Kprobe BRK hooks add ~1-2 µs per hooked call.
+  reboot-with-susfs-magic (binary only — the app sandbox's seccomp filter
+  SIGSYS-kills any app calling reboot(2), so the APK skips it and reports
+  the gettid/statx pair). Kprobe BRK hooks add ~1-2 µs per hooked call.
 
 ## Binary usage
 

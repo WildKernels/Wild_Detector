@@ -554,6 +554,16 @@ static void probe_p7(void)
 {
 	double t0 = bench(0, 20000, 24);
 	double t1 = bench(1, 20000, 24);
+#ifdef LKMDET_LIBRARY
+	/* App sandbox seccomp kills any app calling reboot(2) with SIGSYS
+	 * (tombstone 2026-10-14: "seccomp prevented call to disallowed arm64
+	 * system call 142"). Never issue it from JNI; adb shell is fine. */
+	fprintf(g_out, "    gettid        ~%6.0f ns (control)\n", t0);
+	fprintf(g_out, "    statx '/'     ~%6.0f ns\n", t1);
+	fprintf(g_out, "    reboot(2): not probed - Android seccomp SIGSYS-kills apps that\n"
+	              "    call it. statx is hooked by the LKM too, so the timing pair above\n"
+	              "    still carries the kprobe signal.\n");
+#else
 	long rb = syscall(__NR_reboot, 0xDEADBEEF, 0xFAFAFAFA, 0, 0);
 	if (rb == -1 && errno == EPERM) {
 		double t2 = bench(2, 20000, 24);
@@ -565,6 +575,7 @@ static void probe_p7(void)
 		fprintf(g_out, "    gettid ~%.0f ns; statx ~%.0f ns; reboot probe returned %ld errno=%d - timing skipped\n",
 			t0, t1, rb, errno);
 	}
+#endif
 }
 
 /* ---------------- banner + verdict ---------------- */
