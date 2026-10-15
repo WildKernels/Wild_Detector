@@ -66,10 +66,15 @@ adb shell am start -n com.wildkernels.lkmdetector/.MainActivity
 ```
 
 - Zero Android permissions (no manifest `uses-permission` at all).
-- Terminal-style UI; tap **RUN SCAN** → results stream per probe.
-- Output mirrors to `adb logcat -s LKMDET` and saves to the app's files
-  dir; the build is `debuggable`, so results can be pulled without root:
-  `adb shell run-as com.wildkernels.lkmdetector cat /sdcard/Android/data/com.wildkernels.lkmdetector/files/lkmdet_result.txt`
+- Card UI modeled on reveny's Native Detector; verdict banner sits directly
+  under the title, one rounded card per probe, tap a card with findings to
+  expand its details. The app shows **detections only** — clean probes get a
+  PASS chip and nothing else.
+- Full verbose output mirrors to `adb logcat -s LKMDET`. The on-device report
+  is detections-only and saves to public **Downloads** as `lkmdet_result.txt`
+  (MediaStore, no permission needed); pre-29 devices fall back to the app
+  files dir, pullable without root via
+  `adb shell run-as com.wildkernels.lkmdetector cat files/lkmdet_result.txt`.
 - `build-apk.sh` generates a local keystore on first run
   (`lkmdet.keystore`, gitignored — never commit it).
 
@@ -117,7 +122,10 @@ Source of every oracle: the susfs4ksu-lkm audit (2026-10), repos kept at
 
 ## Credits
 
-- **UI design** — modeled on [Duck Detector](https://github.com/eltavine/Duck-Detector-Refactoring)
-  by Eltavine (Apache-2.0): its iOS-grouped dark dashboard look — card, hairline
-  and status-pill design tokens plus its typography scale. No detection code or
-  logic is derived from it; every probe and verdict here is original.
+- **UI design (v1.5+)** — modeled on [Native Root Detector](https://github.com/reveny/Android-Native-Root-Detector)
+  by Reveny (MIT): verdict-first banner layout, flat rounded detection cards,
+  expandable details.
+- **UI design (v1.3–v1.4)** — modeled on [Duck Detector](https://github.com/eltavine/Duck-Detector-Refactoring)
+  by Eltavine (Apache-2.0): iOS-grouped dark dashboard tokens and typography.
+- No detection code or logic is derived from either; every probe and verdict
+  here is original.
