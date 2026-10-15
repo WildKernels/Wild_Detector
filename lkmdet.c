@@ -743,5 +743,23 @@ static int findings_class(void)
 
 JNIEXPORT jint JNICALL
 Java_com_wildkernels_lkmdetector_MainActivity_nativeFindings(JNIEnv *env, jobject th)
-{ (void)th; return findings_class(); }
+{ (void)env; (void)th; return findings_class(); }
+
+/* per-probe hit result: 1 = detection, 0 = clean (P7 info-only, always 0) */
+static int probe_result_class(int which)
+{
+	switch (which) {
+	case 1: return g_ph_total > 0;
+	case 2: return g_race_hit > 0;
+	case 3: return (g_oot || g_unsign) != 0;
+	case 4: return g_mod_hits > 0;
+	case 5: return (g_ks_lkm > 0 || g_ks_total > 0);
+	case 6: return g_opath_weird > 0;
+	default: return 0;
+	}
+}
+
+JNIEXPORT jint JNICALL
+Java_com_wildkernels_lkmdetector_MainActivity_nativeProbeResult(JNIEnv *env, jobject th, jint which)
+{ (void)env; (void)th; return probe_result_class((int)which); }
 #endif
