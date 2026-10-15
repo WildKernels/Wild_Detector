@@ -45,7 +45,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -54,10 +53,8 @@ import androidx.compose.ui.unit.dp
 import com.reveny.nativecheck.R
 import com.reveny.nativecheck.app.DetectionData
 import com.reveny.nativecheck.viewmodel.MainViewModel
-import compose.icons.TablerIcons
 import compose.icons.tablericons.Filled
 import compose.icons.tablericons.Outline
-import compose.icons.tablericons.filled.BrandGithub
 import compose.icons.tablericons.outline.Virus
 
 @Composable
@@ -172,47 +169,6 @@ fun DetectionCard(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(detection.description, style = MaterialTheme.typography.bodyMedium)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun AboutCard() {
-    val uriHandler = LocalUriHandler.current
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp)),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.project_page),
-                style = MaterialTheme.typography.titleSmall
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = stringResource(R.string.project_description),
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            FilledTonalButton(
-                onClick = { uriHandler.openUri("https://github.com/WildKernels/Wild_Detector") }
-            ) {
-                Icon(
-                    imageVector = TablerIcons.Filled.BrandGithub,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.project_button))
             }
         }
     }
