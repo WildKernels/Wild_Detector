@@ -61,9 +61,7 @@ adb shell /data/local/tmp/lkmdet -d /data/local/tmp   # extra scan dir
 
 ```sh
 ./build-apk.sh          # NDK lib + javac + d8 + aapt2 + zipalign + apksigner
-adb install -r WildDetector.apk      # bear-card look (upgrades the old LKM Detector)
-adb install -r WildDetectorRev.apk   # reveny Native-Detector look
-adb install -r WildDetectorX.apk     # all-new Wild look
+adb install -r WildDetector.apk
 adb shell am start -n com.wildkernels.lkmdetector/.MainActivity
 ```
 

@@ -108,17 +108,8 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           cp WildDetector.apk "WildDetector-$TAG.apk"
-          cp WildDetectorRev.apk "WildDetectorRev-$TAG.apk"
-          cp WildDetectorX.apk "WildDetectorX-$TAG.apk"
-          gh release create "$TAG" \
-            "WildDetector-$TAG.apk" "WildDetectorRev-$TAG.apk" "WildDetectorX-$TAG.apk" \
+          gh release create "$TAG" "WildDetector-$TAG.apk" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --generate-notes \
-            --notes "Wild Detector - non-root susfs LKM detector. Three looks, same engine.
-
-          - \`WildDetector-$TAG.apk\` - bear-card design (installs over the old LKM Detector)
-          - \`WildDetectorRev-$TAG.apk\` - reveny Native-Detector design
-          - \`WildDetectorX-$TAG.apk\` - all-new Wild design
-
-          Install all three side by side and pick the look you like."
+            --notes "Wild Detector - detects the susfs4ksu-lkm loadable-module port.\n\n          - \`WildDetector-$TAG.apk\` - zero-permission app (installs over older LKMDet releases)"
