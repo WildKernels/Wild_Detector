@@ -61,6 +61,8 @@ fun Home(
     )
     val appSettings = LocalAppSettings.current
     val context = LocalContext.current
+    val experimentalOnToast = stringResource(R.string.experimental_on_toast)
+    val experimentalOffToast = stringResource(R.string.experimental_off_toast)
 
     Scaffold(
         modifier = Modifier
@@ -87,10 +89,7 @@ fun Home(
                                 settingsViewModel.setEnableExperimentalDetections(enabled)
                                 Toast.makeText(
                                     context,
-                                    stringResource(
-                                        if (enabled) R.string.experimental_on_toast
-                                        else R.string.experimental_off_toast
-                                    ),
+                                    if (enabled) experimentalOnToast else experimentalOffToast,
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 // rescan immediately with the new setting
