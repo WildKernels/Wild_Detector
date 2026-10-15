@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # gradle dependencies + version catalog (gradle/libs.versions.toml)
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  # workflow action pins
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -76,7 +76,7 @@ jobs:
         run: |
           chmod +x gradlew
           N="${TAG#v}"
-          ./gradlew assembleRelease "-PverCode=$N" "-PverName=$N" \
+          ./gradlew assembleRelease "-PwildVerCode=$N" "-PwildVerName=$N" \
             || { echo "build failed - releasing the claimed tag"; git push origin ":refs/tags/$TAG"; exit 1; }
 
       - name: Release the APK

@@ -21,8 +21,9 @@ android {
         }
 
         if (project.plugins.hasPlugin('com.android.application')) {
-            versionCode rootProject.ext.verCode
-            versionName rootProject.ext.verName
+            // CI passes -PwildVerCode=N -PwildVerName=N so the APK version matches the release tag
+            versionCode (rootProject.hasProperty('wildVerCode') ? Integer.parseInt(rootProject.property('wildVerCode').toString()) : rootProject.ext.verCode)
+            versionName (rootProject.hasProperty('wildVerName') ? rootProject.property('wildVerName').toString() : rootProject.ext.verName)
         }
 
         buildConfigField 'long', 'BUILD_TIME', Instant.now().epochSecond.toString()
