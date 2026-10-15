@@ -38,7 +38,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.reveny.nativecheck.R
 import com.reveny.nativecheck.app.DetectionData
-import com.reveny.nativecheck.ui.component.AboutCard
 import com.reveny.nativecheck.ui.component.AppInfoCard
 import com.reveny.nativecheck.ui.component.CheckCard
 import com.reveny.nativecheck.ui.component.DetectionCard
@@ -49,7 +48,9 @@ import com.reveny.nativecheck.ui.providable.LocalAppSettings
 import com.reveny.nativecheck.viewmodel.MainViewModel
 import com.reveny.nativecheck.viewmodel.SettingsViewModel
 import compose.icons.TablerIcons
+import compose.icons.tablericons.Filled
 import compose.icons.tablericons.Outline
+import compose.icons.tablericons.filled.BrandGithub
 import compose.icons.tablericons.outline.Refresh
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +67,7 @@ fun Home(
     )
     val appSettings = LocalAppSettings.current
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
 
     Scaffold(
         modifier = Modifier
