@@ -79,6 +79,7 @@ public class MainActivity extends Activity {
     private TextView[] chevs = new TextView[7];
     private String[] results = new String[7];
     private String[] labels = new String[7];
+    private LinearLayout[] cards = new LinearLayout[7];
     private Handler ui;
 
     @Override protected void onCreate(Bundle b) {
@@ -199,6 +200,7 @@ public class MainActivity extends Activity {
             det.setVisibility(View.GONE);
             details[i] = det;
             card.addView(det);
+            cards[i] = card;
 
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
             lp.topMargin = (int) dp(16);
@@ -282,6 +284,14 @@ public class MainActivity extends Activity {
         btn.setEnabled(false);
         btn.setText("Scanning...");
         bannerCard.setVisibility(View.GONE);
+        for (int i = 0; i < 7; i++) {
+            cards[i].setVisibility(View.VISIBLE);
+            details[i].setText("");
+            details[i].setVisibility(View.GONE);
+            chevs[i].setVisibility(View.GONE);
+            chevs[i].setText("\u25BC");
+            setChip(chips[i], "IDLE", TEXT2);
+        }
         final Probe[] probes = {
             () -> nativeP1(), () -> nativeP2(10), () -> nativeP3(), () -> nativeP4(),
             () -> nativeP5(), () -> nativeP6(), () -> nativeP7(),
@@ -392,6 +402,9 @@ public class MainActivity extends Activity {
             bannerCard.animate().alpha(1f).setDuration(250).start();
             int pass = 7 - hits - blocked - 1; /* minus P7 info */
             statusLine.setText(pass + " pass \u00B7 " + hits + " detected \u00B7 " + blocked + " blocked");
+            for (int i = 0; i < 7; i++)
+                if (!"DETECTED".equals(labels[i]))
+                    cards[i].setVisibility(View.GONE);
             scroll.post(() -> scroll.smoothScrollTo(0, 0));
         });
     }
