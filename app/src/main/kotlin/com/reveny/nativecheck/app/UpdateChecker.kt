@@ -20,16 +20,19 @@ import java.net.URL
 import java.util.Scanner
 import java.util.concurrent.Executors
 
+/** Update checks run against this repo's GitHub releases; the upstream
+ * dl.reveny.me endpoint was removed. */
 class UpdateChecker(private val context: Context) {
-    private val updateJsonUrl = "https://dl.reveny.me/update.json"
+    private val releasesApiUrl = "https://api.github.com/repos/TheWildJames/Wild_Detector/releases/latest"
 
     @SuppressLint("StringFormatInvalid")
     fun checkForUpdates(onUpdateAvailable: (String, String, String) -> Unit) {
         Executors.newSingleThreadExecutor().execute {
             try {
-                val url = URL(updateJsonUrl)
-                val connection = url.openConnection() as HttpURLConnection
+                val connection = URL(releasesApiUrl).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
+                connection.setRequestProperty("Accept", "application/vnd.github+json")
+                connection.setRequestProperty("User-Agent", "WildDetector")
                 connection.connect()
 
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
@@ -41,30 +44,28 @@ class UpdateChecker(private val context: Context) {
                     scanner.close()
                     connection.disconnect()
 
-                    val jsonObject = JSONObject(jsonBuilder.toString())
-                    val updates = jsonObject.getJSONArray("updates")
+                    val json = JSONObject(jsonBuilder.toString())
+                    val latestVersion = json.getString("tag_name").removePrefix("v")
 
-                    val currentVersion = getCurrentVersion()
-                    var latestVersion = currentVersion ?: "0.0.0" // Handle nullable String
-                    var latestApkName = ""
-                    var latestApkUrl = ""
-
-                    for (i in 0 until updates.length()) {
-                        val update = updates.getJSONObject(i)
-                        val version = update.getString("version")
-                        val apkName = update.getString("apkName")
-                        val apkUrl = update.getString("apkUrl")
-
-                        if (isVersionNewer(version, latestVersion)) {
-                            latestVersion = version
-                            latestApkName = apkName
-                            latestApkUrl = apkUrl
+                    var apkName = ""
+                    var apkUrl = ""
+                    val assets = json.getJSONArray("assets")
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val name = asset.getString("name")
+                        if (name.endsWith(".apk")) {
+                            apkName = name
+                            apkUrl = asset.getString("browser_download_url")
+                            break
                         }
                     }
 
-                    if (latestVersion != currentVersion && latestApkUrl.isNotEmpty()) {
+                    val currentVersion = getCurrentVersion()
+                    if (apkUrl.isNotEmpty() && currentVersion != null &&
+                        latestVersion.toIntOrNull() != null && currentVersion.toIntOrNull() != null &&
+                        latestVersion.toInt() > currentVersion.toInt()) {
                         Handler(Looper.getMainLooper()).post {
-                            onUpdateAvailable(latestVersion, latestApkUrl, latestApkName)
+                            onUpdateAvailable(latestVersion, apkUrl, apkName)
                         }
                     }
                 } else {
@@ -92,18 +93,6 @@ class UpdateChecker(private val context: Context) {
         }
     }
 
-    private fun isVersionNewer(version1: String, version2: String): Boolean {
-        val v1 = version1.split(".")
-        val v2 = version2.split(".")
-        for (i in 0 until maxOf(v1.size, v2.size)) {
-            val num1 = v1.getOrNull(i)?.toIntOrNull() ?: 0
-            val num2 = v2.getOrNull(i)?.toIntOrNull() ?: 0
-            if (num1 > num2) return true
-            if (num1 < num2) return false
-        }
-        return false
-    }
-
     @SuppressLint("StringFormatInvalid")
     fun downloadAndInstallApk(apkUrl: String, apkName: String, onProgressUpdate: (Int) -> Unit, onDownloadComplete: (File) -> Unit, onError: (String) -> Unit) {
         val apkFile = File(context.cacheDir, apkName)
@@ -128,7 +117,6 @@ class UpdateChecker(private val context: Context) {
                     val buffer = ByteArray(1024)
                     var bytesRead: Int
                     var totalBytesRead: Long = 0
-
 
                     while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                         outputStream.write(buffer, 0, bytesRead)

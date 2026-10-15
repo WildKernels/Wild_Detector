@@ -80,7 +80,6 @@ kotlin {
 dependencies {
     implementation platform(libs.androidx.compose.bom)
     implementation libs.bundles.androidxCompose
-    implementation libs.bundles.accompanist
     implementation libs.bundles.androidx
     implementation libs.bundles.androidxLifecycle
     implementation libs.bundles.dependencyInjection

@@ -73,12 +73,7 @@ class MainActivity : AppCompatActivity() {
             userPreferences ?: return@setContent
 
             CompositionLocalProvider(LocalAppSettings provides userPreferences!!) {
-                AppTheme(
-                    isDynamicColor = userPreferences!!.dynamicColor,
-                    theme = userPreferences!!.darkTheme,
-                    contrastMode = userPreferences!!.highContrast,
-                    themeColor = userPreferences!!.themeColor.color
-                ) {
+                AppTheme {
                     MainScreen(mainViewModel)
                     UpdateCheck(updateChecker)
                 }

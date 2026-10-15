@@ -1,13 +1,13 @@
-package com.reveny.nativecheck.ui.screens.settings.category
+package com.reveny.nativecheck.ui.component
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Box
-//noinspection UsingMaterialAndMaterial3Libraries
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,53 +17,51 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.os.LocaleListCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.reveny.nativecheck.R
 import com.reveny.nativecheck.datastore.model.Language
-import com.reveny.nativecheck.ui.component.SettingNormalItem
+import com.reveny.nativecheck.viewmodel.SettingsViewModel
 import compose.icons.TablerIcons
-import compose.icons.tablericons.Outline
-import compose.icons.tablericons.outline.Language
+import compose.icons.tablericons.outline.Language as LanguageIcon
 import java.util.Locale
 
-private val Languages = LanguageItem.entries.toTypedArray()
+private val LanguageItems = LanguageEntry.entries.toTypedArray()
 
+/** Top-bar language picker (moved here from the removed Settings screen). */
 @Composable
-internal fun Language(
-    language: Language,
-    onLanguageChange: (Language) -> Unit,
-) {
+fun LanguageMenu() {
     var expanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val settingsViewModel: SettingsViewModel = hiltViewModel()
 
     Box {
-        SettingNormalItem(
-            title = stringResource(R.string.pref_language),
-            icon = TablerIcons.Outline.Language,
-            description = Languages.find { it.value == language }?.text?.let { stringResource(it) },
-            onClick = { expanded = true }
-        )
-
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                LanguageIcon,
+                contentDescription = stringResource(R.string.pref_language)
+            )
+        }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            Languages.forEach { item ->
-                DropdownMenuItem(onClick = {
-                    onLanguageChange(item.value)
-                    val localeList = LocaleListCompat.create(item.locale)
-                    AppCompatDelegate.setApplicationLocales(localeList)
-                    expanded = false
+            LanguageItems.forEach { item ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(item.text)) },
+                    onClick = {
+                        settingsViewModel.setLanguage(item.value)
+                        AppCompatDelegate.setApplicationLocales(LocaleListCompat.create(item.locale))
+                        expanded = false
 
-                    // Restart the activity to apply the new language
-                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                    intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    context.startActivity(intent)
-                }) {
-                    Text(stringResource(item.text))
-                }
+                        // Restart the activity to apply the new language
+                        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                        intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        context.startActivity(intent)
+                    }
+                )
             }
         }
     }
 }
 
-private enum class LanguageItem(
+private enum class LanguageEntry(
     val value: Language,
     val locale: Locale?,
     val text: Int,
@@ -84,5 +82,5 @@ private enum class LanguageItem(
     VIETNAMESE(Language.VIETNAMESE, Locale("vi"), R.string.vi),
     CHINESE_SIMPLIFIED(Language.CHINESE_SIMPLIFIED, Locale("zh", "CN"), R.string.zh_cn),
     CHINESE_TRADITIONAL(Language.CHINESE_TRADITIONAL, Locale("zh", "TW"), R.string.zh_tw),
-    BULGARIAN(Language.BULGARIAN, Locale("bg"), R.string.bg) 
+    BULGARIAN(Language.BULGARIAN, Locale("bg"), R.string.bg)
 }

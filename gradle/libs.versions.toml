@@ -20,12 +20,6 @@ androidx-compose-navigation = { group = "androidx.navigation", name = "navigatio
 androidx-compose-window = { group = "androidx.compose.material3", name = "material3-window-size-class", version = "1.3.1" }
 
 # accompanist bundle
-accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanist" }
-accompanist-systemuicontroller = { group = "com.google.accompanist", name = "accompanist-systemuicontroller", version.ref = "accompanist" }
-accompanist-webview = { group = "com.google.accompanist", name = "accompanist-webview", version.ref = "accompanist" }
-accompanist-pager-layouts = { group = "com.google.accompanist", name = "accompanist-pager", version.ref = "accompanist" }
-accompanist-pager-indicators = { group = "com.google.accompanist", name = "accompanist-pager-indicators", version.ref = "accompanist" }
-accompanist-flowlayout = { group = "com.google.accompanist", name = "accompanist-flowlayout", version.ref = "accompanist" }
 
 # androidx bundle
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version = "1.7.0" }
@@ -33,7 +27,6 @@ androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", ve
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version = "1.15.0" }
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version = "1.0.1" }
 androidx-datastore-core = { group = "androidx.datastore", name = "datastore", version = "1.1.2" }
-androidx-palette = { group = "androidx.palette", name = "palette-ktx", version = "1.0.0" }
 androidx-hilt = { group = "androidx.hilt", name = "hilt-navigation-compose", version = "1.2.0" }
 android-material = { group = "com.google.android.material", name = "material", version = "1.12.0" }
 
@@ -52,13 +45,6 @@ javaxInject = { group = "javax.inject", name = "javax.inject", version = "1" }
 kotlinx-serialization-protobuf = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-protobuf", version = "1.8.0" }
 
 # core bundle
-material-kolor = { group = "com.materialkolor", name = "material-kolor", version = "2.0.2" }
-android-svg = { group = "com.caverock", name = "androidsvg-aar", version = "1.4" }
-boringssl = { group = "io.github.vvb2060.ndk", name = "boringssl", version = "20250114" }
-coil-base = { group = "io.coil-kt", name = "coil-base", version = "2.7.0" }
-coil-compose = { group = "io.coil-kt", name = "coil-compose", version = "2.7.0" }
-coil-svg = { group = "io.coil-kt", name = "coil-svg", version = "2.7.0" }
-coil-gif = { group = "io.coil-kt", name = "coil-gif", version = "2.7.0" }
 tabler-icon = { group = "io.github.lyxnx.compose.ui", name = "tabler-icons-android", version = "3.29.0" }
 
 [plugins]
@@ -87,14 +73,6 @@ androidxCompose = [
     "androidx-compose-animation",
 ]
 
-accompanist = [
-    "accompanist-permissions",
-    "accompanist-systemuicontroller",
-    "accompanist-webview",
-    "accompanist-pager-layouts",
-    "accompanist-pager-indicators",
-    "accompanist-flowlayout",
-]
 
 androidx = [
     "androidx-appcompat",
@@ -102,7 +80,6 @@ androidx = [
     "androidx-core-ktx",
     "androidx-core-splashscreen",
     "androidx-datastore-core",
-    "androidx-palette",
     "android-material",
     "androidx-hilt",
 ]
@@ -124,12 +101,5 @@ protobuf = [
 ]
 
 core = [
-    "material-kolor",
-    "android-svg",
-    "boringssl",
-    "coil-base",
-    "coil-compose",
-    "coil-svg",
-    "coil-gif",
     "tabler-icon",
 ]

@@ -4,8 +4,8 @@ Detects the **susfs4ksu-lkm** loadable-module port (inforcqb's LKM build of
 susfs4ksu) from a normal, unprivileged app process. Zero root needed.
 
 This app is [reveny's Native Detector](https://github.com/reveny/Android-Native-Root-Detector)
-(MIT) used as the base, **as-is**: the entire UI, settings, update checker and
-layout are upstream code. The only changes:
+(MIT) used as the base. The home UI (check card, detection cards, info cards)
+is upstream code; everything else was adjusted:
 
 - the detection placeholder (`MainViewModel.getDetections`, which upstream
   returns `emptyList()`) is filled with the real engine
@@ -13,6 +13,14 @@ layout are upstream code. The only changes:
   `app/src/main/cpp/`: the lkmdet engine + a JNI bridge for
   `Native.getDetections`
 - the app label is Wild Detector
+- **no telemetry**: the telemetry toggle was removed (nothing was ever sent
+  anywhere)
+- **no reveny.me connection**: update checks use this repo's GitHub releases
+- **colors follow the system**: Material You dynamic color on Android 12+,
+  light/dark follows the system setting; the upstream seed-color picker was
+  removed
+- **language + experimental-detections switches** live in the home top bar;
+  the bottom bar and the settings screens were removed entirely
 
 ## What it detects
 
