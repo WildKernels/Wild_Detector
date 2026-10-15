@@ -22,6 +22,7 @@ import com.reveny.nativecheck.R
 import com.reveny.nativecheck.datastore.model.Language as LanguagePref
 import com.reveny.nativecheck.viewmodel.SettingsViewModel
 import compose.icons.TablerIcons
+import compose.icons.tablericons.Outline
 import compose.icons.tablericons.outline.Language
 import java.util.Locale
 
