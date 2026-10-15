@@ -17,7 +17,7 @@ android {
         targetSdk rootProject.ext.androidTargetSdkVersion
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters "arm64-v8a", "x86_64"
         }
 
         if (project.plugins.hasPlugin('com.android.application')) {
