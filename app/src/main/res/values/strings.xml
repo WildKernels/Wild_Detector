@@ -8,6 +8,8 @@
     <string name="home_label">Home</string>
     <string name="settings_label">Settings</string>
     <string name="project_page">Project</string>
+    <string name="project_description">Wild Detector is a non-root susfs LKM detector. Source code, releases and update downloads live on GitHub.</string>
+    <string name="project_button">Open on GitHub</string>
     <string name="detail">Details:</string>
     <string name="about_view_source_code"><![CDATA[Join our %1$s channel<br/><br>Copyright © %2$s<br/>]]></string>
     <string name="About">About</string>

@@ -26,8 +26,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CardElevation
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -188,23 +188,31 @@ fun AboutCard() {
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(20.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.project_page),
-                    style = MaterialTheme.typography.titleSmall
-                )
-            }
-            IconButton(onClick = { uriHandler.openUri("https://github.com/WildKernels/Wild_Detector") }) {
+            Text(
+                text = stringResource(R.string.project_page),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.project_description),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            FilledTonalButton(
+                onClick = { uriHandler.openUri("https://github.com/WildKernels/Wild_Detector") }
+            ) {
                 Icon(
                     imageVector = TablerIcons.Filled.BrandGithub,
                     contentDescription = null,
+                    modifier = Modifier.size(18.dp)
                 )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.project_button))
             }
         }
     }
