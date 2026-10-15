@@ -18,9 +18,4 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setEnableExperimentalDetections(enableExperimentalDetections: Boolean) {
-        viewModelScope.launch {
-            appSettingsRepository.setEnableExperimentalDetections(enableExperimentalDetections)
-        }
-    }
 }

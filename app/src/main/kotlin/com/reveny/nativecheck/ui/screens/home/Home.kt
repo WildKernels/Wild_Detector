@@ -20,7 +20,6 @@ import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
@@ -28,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -46,6 +44,9 @@ import com.reveny.nativecheck.ui.component.SystemInfoCard
 import com.reveny.nativecheck.ui.providable.LocalAppSettings
 import com.reveny.nativecheck.viewmodel.MainViewModel
 import com.reveny.nativecheck.viewmodel.SettingsViewModel
+import compose.icons.TablerIcons
+import compose.icons.tablericons.Outline
+import compose.icons.tablericons.outline.Refresh
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,8 +62,6 @@ fun Home(
     )
     val appSettings = LocalAppSettings.current
     val context = LocalContext.current
-    val experimentalOnToast = stringResource(R.string.experimental_on_toast)
-    val experimentalOffToast = stringResource(R.string.experimental_off_toast)
 
     Scaffold(
         modifier = Modifier
@@ -74,33 +73,16 @@ fun Home(
                 scrollBehavior = scrollBehavior,
                 actions = {
                     LanguageMenu()
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 4.dp, end = 12.dp)
+                    IconButton(
+                        onClick = {
+                            // force a fresh scan with the current settings
+                            viewModel.performTask(context, context.packageManager, false, force = true)
+                        },
+                        modifier = Modifier.padding(end = 4.dp)
                     ) {
-                        Text(
-                            text = stringResource(R.string.experimental_toggle),
-                            style = typography.labelMedium
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Switch(
-                            checked = appSettings.enableExperimentalDetections,
-                            onCheckedChange = { enabled ->
-                                settingsViewModel.setEnableExperimentalDetections(enabled)
-                                Toast.makeText(
-                                    context,
-                                    if (enabled) experimentalOnToast else experimentalOffToast,
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                // rescan immediately with the new setting
-                                viewModel.performTask(
-                                    context,
-                                    context.packageManager,
-                                    enabled,
-                                    force = true
-                                )
-                            },
-                            modifier = Modifier.padding(start = 4.dp, end = 12.dp)
+                        Icon(
+                            TablerIcons.Outline.Refresh,
+                            contentDescription = stringResource(R.string.rescan)
                         )
                     }
                 }

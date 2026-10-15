@@ -41,9 +41,7 @@
     <string name="pref_telemetry_on">Sentry telemetry is disabled</string>
     <string name="pref_telemetry_off">This will disable Sentry telemetry</string>
     <string name="pref_experimental">Enable Experimental Detections</string>
-    <string name="experimental_toggle">Experimental</string>
-    <string name="experimental_on_toast">Experimental checks on - rescanning</string>
-    <string name="experimental_off_toast">Experimental checks off - rescanning</string>
+    <string name="rescan">Rescan</string>
     <string name="pref_experimental_on">Experimental detections are enabled</string>
     <string name="pref_experimental_off">This will enable experimental detections (restart required)</string>
     <string name="pref_dynamic_color">Dynamic Color</string>
