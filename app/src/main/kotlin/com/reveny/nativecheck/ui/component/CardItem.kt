@@ -58,8 +58,6 @@ import compose.icons.TablerIcons
 import compose.icons.tablericons.Filled
 import compose.icons.tablericons.Outline
 import compose.icons.tablericons.filled.BrandGithub
-import compose.icons.tablericons.filled.BrandPatreon
-import compose.icons.tablericons.outline.BrandTelegram
 import compose.icons.tablericons.outline.Virus
 
 @Composable
@@ -198,29 +196,15 @@ fun AboutCard() {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.support_us),
+                    text = stringResource(R.string.project_page),
                     style = MaterialTheme.typography.titleSmall
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                IconButton(onClick = { uriHandler.openUri("https://github.com/reveny") }) {
-                    Icon(
-                        imageVector = TablerIcons.Filled.BrandGithub,
-                        contentDescription = null,
-                    )
-                }
-                IconButton(onClick = { uriHandler.openUri("https://patreon.com/Reveny") }) {
-                    Icon(
-                        imageVector = TablerIcons.Filled.BrandPatreon,
-                        contentDescription = null,
-                    )
-                }
-                IconButton(onClick = { uriHandler.openUri("https://t.me/reveny1") }) {
-                    Icon(
-                        imageVector = TablerIcons.Outline.BrandTelegram,
-                        contentDescription = null,
-                    )
-                }
+            IconButton(onClick = { uriHandler.openUri("https://github.com/WildKernels/Wild_Detector") }) {
+                Icon(
+                    imageVector = TablerIcons.Filled.BrandGithub,
+                    contentDescription = null,
+                )
             }
         }
     }

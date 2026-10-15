@@ -11,14 +11,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -91,41 +89,21 @@ class MainActivity : AppCompatActivity() {
     fun UpdateCheck(updateChecker: UpdateChecker) {
         var showDialog by remember { mutableStateOf(false) }
         var latestVersion by remember { mutableStateOf("") }
-        var apkUrl by remember { mutableStateOf("") }
-        var apkName by remember { mutableStateOf("") }
-        var downloadProgress by remember { mutableIntStateOf(0) }
-        var isDownloading by remember { mutableStateOf(false) }
 
         if (showDialog) {
             UpdateDialog(
                 latestVersion = latestVersion,
                 onConfirm = {
-                    isDownloading = true
-                    updateChecker.downloadAndInstallApk(
-                        apkUrl,
-                        apkName,
-                        onProgressUpdate = { progress -> downloadProgress = progress },
-                        onDownloadComplete = { file ->
-                            isDownloading = false
-                            updateChecker.installApk(file)
-                        },
-                        onError = { message ->
-                            isDownloading = false
-                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-                        }
-                    )
+                    showDialog = false
+                    updateChecker.openReleasesPage()
                 },
-                onCancel = { showDialog = false },
-                downloadProgress = downloadProgress,
-                isDownloading = isDownloading
+                onCancel = { showDialog = false }
             )
         }
 
         LaunchedEffect(Unit) {
-            updateChecker.checkForUpdates { version, url, name ->
+            updateChecker.checkForUpdates { version ->
                 latestVersion = version
-                apkUrl = url
-                apkName = name
                 showDialog = true
             }
         }
@@ -136,34 +114,22 @@ class MainActivity : AppCompatActivity() {
 fun UpdateDialog(
     latestVersion: String,
     onConfirm: () -> Unit,
-    onCancel: () -> Unit,
-    downloadProgress: Int,
-    isDownloading: Boolean
+    onCancel: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text(text = stringResource(R.string.update_available)) },
         text = {
-            Column {
-                Text(
-                    text = String.format(
-                        stringResource(R.string.version_is_available),
-                        latestVersion
-                    )
+            Text(
+                text = String.format(
+                    stringResource(R.string.version_is_available),
+                    latestVersion
                 )
-                if (isDownloading) {
-                    Spacer(modifier = Modifier.padding(top = 16.dp))
-                    LinearProgressIndicator(
-                        progress = { downloadProgress / 100f },
-                    )
-                }
-            }
+            )
         },
         confirmButton = {
-            if (!isDownloading) {
-                TextButton(onClick = onConfirm) {
-                    Text(stringResource(R.string.update_confirm))
-                }
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.update_open))
             }
         },
         dismissButton = {
