@@ -28,6 +28,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -58,6 +60,7 @@ fun Home(
         canScroll = { true }
     )
     val appSettings = LocalAppSettings.current
+    val context = LocalContext.current
 
     Scaffold(
         modifier = Modifier
@@ -69,11 +72,38 @@ fun Home(
                 scrollBehavior = scrollBehavior,
                 actions = {
                     LanguageMenu()
-                    Switch(
-                        checked = appSettings.enableExperimentalDetections,
-                        onCheckedChange = { settingsViewModel.setEnableExperimentalDetections(it) },
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(start = 4.dp, end = 12.dp)
-                    )
+                    ) {
+                        Text(
+                            text = stringResource(R.string.experimental_toggle),
+                            style = typography.labelMedium
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = appSettings.enableExperimentalDetections,
+                            onCheckedChange = { enabled ->
+                                settingsViewModel.setEnableExperimentalDetections(enabled)
+                                Toast.makeText(
+                                    context,
+                                    stringResource(
+                                        if (enabled) R.string.experimental_on_toast
+                                        else R.string.experimental_off_toast
+                                    ),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                // rescan immediately with the new setting
+                                viewModel.performTask(
+                                    context,
+                                    context.packageManager,
+                                    enabled,
+                                    force = true
+                                )
+                            },
+                            modifier = Modifier.padding(start = 4.dp, end = 12.dp)
+                        )
+                    }
                 }
             )
         },

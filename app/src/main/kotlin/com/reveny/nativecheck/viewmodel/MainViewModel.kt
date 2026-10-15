@@ -62,13 +62,13 @@ class MainViewModel() : ViewModel() {
         }
     }
 
-    fun performTask(context: Context, packageManager: PackageManager, enableExperimental: Boolean) {
+    fun performTask(context: Context, packageManager: PackageManager, enableExperimental: Boolean, force: Boolean = false) {
         viewModelScope.launch {
             _isLoading.value = true
 
             experimentalEnabled.value = String.format(context.getString(R.string.experimental_detections), if (enableExperimental) context.getString(R.string.true_a) else context.getString(R.string.false_a))
 
-            if (_detections.value.isNotEmpty()) {
+            if (_detections.value.isNotEmpty() && !force) {
                 _isLoading.value = false
                 return@launch
             }

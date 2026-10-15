@@ -2,7 +2,6 @@ package com.reveny.nativecheck.app
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Handler
@@ -11,82 +10,60 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.reveny.nativecheck.R
-import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.Scanner
 import java.util.concurrent.Executors
 
 /** Update checks run against this repo's GitHub releases; the upstream
- * dl.reveny.me endpoint was removed. */
+ * dl.reveny.me endpoint was removed.
+ *
+ * Instead of the rate-limited api.github.com JSON endpoint we resolve
+ * https://github.com/TheWildJames/Wild_Detector/releases/latest, which
+ * 302-redirects to /releases/tag/vN - one unauthenticated request, no rate
+ * limit, no JSON. The automatic launch check stays silent on failure (no
+ * error toasts when offline); the download + install flow is unchanged. */
 class UpdateChecker(private val context: Context) {
-    private val releasesApiUrl = "https://api.github.com/repos/TheWildJames/Wild_Detector/releases/latest"
+    private val releasesLatestUrl = "https://github.com/TheWildJames/Wild_Detector/releases/latest"
+    private val releaseDownloadUrl = "https://github.com/TheWildJames/Wild_Detector/releases/download"
 
-    @SuppressLint("StringFormatInvalid")
     fun checkForUpdates(onUpdateAvailable: (String, String, String) -> Unit) {
         Executors.newSingleThreadExecutor().execute {
             try {
-                val connection = URL(releasesApiUrl).openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Accept", "application/vnd.github+json")
+                val connection = URL(releasesLatestUrl).openConnection() as HttpURLConnection
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
                 connection.setRequestProperty("User-Agent", "WildDetector")
                 connection.connect()
+                val location = connection.getHeaderField("Location")
+                connection.disconnect()
 
-                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                    val scanner = Scanner(connection.inputStream)
-                    val jsonBuilder = StringBuilder()
-                    while (scanner.hasNext()) {
-                        jsonBuilder.append(scanner.nextLine())
-                    }
-                    scanner.close()
-                    connection.disconnect()
+                // Location: .../releases/tag/vN
+                val latest = location?.substringAfterLast("/v")?.toIntOrNull() ?: return@execute
+                val current = getCurrentVersion()?.toIntOrNull() ?: return@execute
 
-                    val json = JSONObject(jsonBuilder.toString())
-                    val latestVersion = json.getString("tag_name").removePrefix("v")
-
-                    var apkName = ""
-                    var apkUrl = ""
-                    val assets = json.getJSONArray("assets")
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(i)
-                        val name = asset.getString("name")
-                        if (name.endsWith(".apk")) {
-                            apkName = name
-                            apkUrl = asset.getString("browser_download_url")
-                            break
-                        }
-                    }
-
-                    val currentVersion = getCurrentVersion()
-                    if (apkUrl.isNotEmpty() && currentVersion != null &&
-                        latestVersion.toIntOrNull() != null && currentVersion.toIntOrNull() != null &&
-                        latestVersion.toInt() > currentVersion.toInt()) {
-                        Handler(Looper.getMainLooper()).post {
-                            onUpdateAvailable(latestVersion, apkUrl, apkName)
-                        }
-                    }
-                } else {
-                    connection.disconnect()
+                if (latest > current) {
                     Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(context, context.getString(R.string.failed_to_get_update_info), Toast.LENGTH_SHORT).show()
+                        onUpdateAvailable(
+                            latest.toString(),
+                            "$releaseDownloadUrl/v$latest/WildDetector-v$latest.apk",
+                            "WildDetector-v$latest.apk"
+                        )
                     }
                 }
             } catch (e: Exception) {
+                // silent: this is the automatic background check
                 e.printStackTrace()
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, String.format(context.getString(R.string.error), e.message), Toast.LENGTH_LONG).show()
-                }
             }
         }
     }
 
     private fun getCurrentVersion(): String? {
         return try {
-            val packageInfo: PackageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            packageInfo.versionName
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
         } catch (e: PackageManager.NameNotFoundException) {
             e.printStackTrace()
             null
@@ -121,7 +98,7 @@ class UpdateChecker(private val context: Context) {
                     while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                         outputStream.write(buffer, 0, bytesRead)
                         totalBytesRead += bytesRead
-                        val progress = (totalBytesRead * 100 / fileLength).toInt()
+                        val progress = if (fileLength > 0) (totalBytesRead * 100 / fileLength).toInt() else 0
                         handler.post { onProgressUpdate(progress) }
                     }
 
