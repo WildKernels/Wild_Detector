@@ -1,7 +1,8 @@
 name: Auto-tag + release
 
-# Every push to main: gradle assembles the release APK (Native Detector base
-# + libwild engine), claims the next free vN tag, publishes a release.
+# Every push to main: claim the next free vN tag, build the release APK with
+# versionCode/versionName pinned to that tag number, publish the release.
+# A failed build deletes the claimed tag so no version number is burned.
 
 on:
   push:
@@ -35,14 +36,10 @@ jobs:
           set -e
           SM="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
           yes | "$SM" --licenses >/dev/null 2>&1 || true
-          "$SM" --install "ndk;28.0.13004108" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"             >/dev/null 2>&1 || echo "sdkmanager partial - AGP will auto-download what is missing"
+          "$SM" --install "ndk;28.0.13004108" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0" \
+            >/dev/null 2>&1 || echo "sdkmanager partial - AGP will auto-download what is missing"
 
-      - name: Build release APK
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease
-
-      - name: Tag next vN
+      - name: Claim next vN tag
         id: tag
         run: |
           set -e
@@ -73,6 +70,15 @@ jobs:
           echo "::error::could not claim a tag number after 5 attempts"
           exit 1
 
+      - name: Build release APK (versionCode = tag number)
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          chmod +x gradlew
+          N="${TAG#v}"
+          ./gradlew assembleRelease "-PverCode=$N" "-PverName=$N" \
+            || { echo "build failed - releasing the claimed tag"; git push origin ":refs/tags/$TAG"; exit 1; }
+
       - name: Release the APK
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,4 +89,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --generate-notes \
-            --notes "Wild Detector - reveny Native Detector base (unchanged UI) with the libwild susfs4ksu-lkm engine filling the detection placeholder."
+            --notes "Wild Detector - reveny Native Detector base (unchanged UI) with the libwild susfs4ksu-lkm engine. versionCode matches this tag."
