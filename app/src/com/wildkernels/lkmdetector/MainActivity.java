@@ -46,9 +46,6 @@ public class MainActivity extends Activity {
     private native String nativeBanner();
     private native String nativeP1();
     private native String nativeP2(int seconds);
-    private native String nativeP3();
-    private native String nativeP4();
-    private native String nativeP5();
     private native String nativeP6();
     private native String nativeP7();
     private native String nativeVerdict();
@@ -61,9 +58,10 @@ public class MainActivity extends Activity {
             "https://github.com/eltavine/Duck-Detector-Refactoring";
 
     private static final String[] PROBES = {
-        "Placeholder scan", "mprotect/uaccess race", "Kernel taint flags",
-        "Loaded modules", "kallsyms symbols", "O_PATH consistency", "Syscall timing",
+        "Placeholder scan", "mprotect/uaccess race", "O_PATH consistency", "Syscall timing",
     };
+    /* original engine probe numbers, for nativeProbeResult() */
+    private static final int[] PN = { 1, 2, 6, 7 };
 
     private interface Probe { String run(); }
 
@@ -74,12 +72,12 @@ public class MainActivity extends Activity {
     private Button btn;
     private LinearLayout bannerCard;
     private TextView bannerHead, bannerSub, statusLine;
-    private TextView[] chips = new TextView[7];
-    private TextView[] details = new TextView[7];
-    private TextView[] chevs = new TextView[7];
-    private String[] results = new String[7];
-    private String[] labels = new String[7];
-    private LinearLayout[] cards = new LinearLayout[7];
+    private TextView[] chips = new TextView[4];
+    private TextView[] details = new TextView[4];
+    private TextView[] chevs = new TextView[4];
+    private String[] results = new String[4];
+    private String[] labels = new String[4];
+    private LinearLayout[] cards = new LinearLayout[4];
     private Handler ui;
 
     @Override protected void onCreate(Bundle b) {
@@ -155,7 +153,7 @@ public class MainActivity extends Activity {
 
         /* status line */
         statusLine = new TextView(this);
-        statusLine.setText("7 checks \u00B7 zero permissions \u00B7 zero root");
+        statusLine.setText("4 checks \u00B7 zero permissions \u00B7 zero root");
         statusLine.setTextSize(13f);
         statusLine.setTextColor(TEXT2);
         statusLine.setPadding(0, (int) dp(12), 0, 0);
@@ -284,7 +282,7 @@ public class MainActivity extends Activity {
         btn.setEnabled(false);
         btn.setText("Scanning...");
         bannerCard.setVisibility(View.GONE);
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 4; i++) {
             cards[i].setVisibility(View.VISIBLE);
             details[i].setText("");
             details[i].setVisibility(View.GONE);
@@ -293,8 +291,7 @@ public class MainActivity extends Activity {
             setChip(chips[i], "IDLE", TEXT2);
         }
         final Probe[] probes = {
-            () -> nativeP1(), () -> nativeP2(10), () -> nativeP3(), () -> nativeP4(),
-            () -> nativeP5(), () -> nativeP6(), () -> nativeP7(),
+            () -> nativeP1(), () -> nativeP2(10), () -> nativeP6(), () -> nativeP7(),
         };
         new Thread(() -> {
             int hits = 0, blocked = 0;
@@ -302,7 +299,7 @@ public class MainActivity extends Activity {
                 for (int i = 0; i < probes.length; i++) {
                     final int fi = i;
                     setChip(chips[i], "...", CAUT);
-                    ui.post(() -> statusLine.setText("Scanning P" + (fi + 1) + "/7 - " + PROBES[fi]));
+                    ui.post(() -> statusLine.setText("Scanning " + (fi + 1) + "/" + PROBES.length + " - " + PROBES[fi]));
                     String r;
                     try {
                         r = probes[i].run();
@@ -313,8 +310,8 @@ public class MainActivity extends Activity {
                     results[i] = r;
                     boolean unreadable = r.contains("unreadable: Permission denied");
                     int hit = 0;
-                    try { hit = nativeProbeResult(i + 1); } catch (Throwable ignored) { }
-                    if (i == 6) {
+                    try { hit = nativeProbeResult(PN[i]); } catch (Throwable ignored) { }
+                    if (i == 3) {
                         labels[i] = "INFO";
                         setChip(chips[i], "INFO", TEXT2);
                     } else if (hit == 1) {
@@ -376,16 +373,6 @@ public class MainActivity extends Activity {
                 sub = "susfs LKM on this device";
                 color = CRIT;
                 break;
-            case 2:
-                head = "DETECTED";
-                sub = "built-in susfs symbols visible (fix defconfig)";
-                color = CRIT;
-                break;
-            case 3:
-                head = "DETECTED";
-                sub = "unsigned out-of-tree module loaded (taint O/E)";
-                color = CRIT;
-                break;
             default:
                 head = "PASS";
                 sub = "no susfs LKM detected";
@@ -400,9 +387,9 @@ public class MainActivity extends Activity {
             bannerCard.setAlpha(0f);
             bannerCard.setVisibility(View.VISIBLE);
             bannerCard.animate().alpha(1f).setDuration(250).start();
-            int pass = 7 - hits - blocked - 1; /* minus P7 info */
+            int pass = 4 - hits - blocked - 1; /* minus timing info */
             statusLine.setText(pass + " pass \u00B7 " + hits + " detected \u00B7 " + blocked + " blocked");
-            for (int i = 0; i < 7; i++)
+            for (int i = 0; i < 4; i++)
                 if (!"DETECTED".equals(labels[i]))
                     cards[i].setVisibility(View.GONE);
             scroll.post(() -> scroll.smoothScrollTo(0, 0));
@@ -421,15 +408,13 @@ public class MainActivity extends Activity {
         sb.append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date())).append('\n');
         switch (cls) {
             case 1: sb.append("\nDETECTED: susfs LKM on this device\n"); break;
-            case 2: sb.append("\nDETECTED: built-in susfs symbols visible (fix defconfig)\n"); break;
-            case 3: sb.append("\nDETECTED: unsigned out-of-tree module loaded (taint O/E)\n"); break;
             default: sb.append("\nPASS: no susfs LKM detected\n"); break;
         }
         boolean any = false;
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 4; i++) {
             if ("DETECTED".equals(labels[i]) && results[i] != null) {
                 any = true;
-                sb.append("\n[P").append(i + 1).append("] ").append(PROBES[i]).append(" - DETECTED\n");
+                sb.append("\n[P").append(PN[i]).append("] ").append(PROBES[i]).append(" - DETECTED\n");
                 for (String line : results[i].split("\n")) {
                     String t = line.trim();
                     if (t.startsWith(">>")) sb.append("  ").append(t).append('\n');
