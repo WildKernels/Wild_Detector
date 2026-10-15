@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.wildkernels.lkmdetector"
-    android:versionCode="9"
-    android:versionName="1.8">
+    android:versionCode="10"
+    android:versionName="1.9">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34"/>
 
     <application
-        android:label="LKM Detector"
+        android:label="Wild Detector"
         android:debuggable="true"
         android:allowBackup="false"
         android:extractNativeLibs="true"

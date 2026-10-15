@@ -13,3 +13,4 @@ lkmdet.keystore
 
 # apksigner v4 signature sidecar
 *.idsig
+WildDetector*.apk

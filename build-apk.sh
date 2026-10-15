@@ -1,50 +1,54 @@
 #!/usr/bin/env bash
-# Builds LKMDet.apk without gradle: NDK lib -> javac -> d8 -> aapt2 -> package -> zipalign -> apksigner
+# Builds the three Wild Detector APKs without gradle:
+#   WildDetector.apk (bear cards) / WildDetectorRev.apk (reveny) / WildDetectorX.apk (wild)
 set -e
 cd "$(dirname "$0")"
 
-# Paths: local defaults, CI overrides via SDK_ROOT / NDK_ROOT
 SDK="${SDK_ROOT:-/opt/android-sdk}"
 AJAR=$(ls "$SDK"/platforms/android-*/android.jar | sort -V | tail -1)
 BT=$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)
 NDK="${NDK_ROOT:-/opt/android-ndk}"
 NDKCC=$(ls "$NDK"/toolchains/llvm/prebuilt/*/bin/aarch64-linux-android24-clang | head -1)
 
-echo "[1/7] NDK: liblkmdet.so"
+echo "[1] NDK: liblkmdet.so (all three apps share it)"
 mkdir -p jniLibs/arm64-v8a
 "$NDKCC" -O2 -Wall -Wextra -pthread -shared -fPIC -DLKMDET_LIBRARY \
     -o jniLibs/arm64-v8a/liblkmdet.so lkmdet.c
 
-echo "[2/7] keystore"
+echo "[2] keystore"
 if [ ! -f lkmdet.keystore ]; then
     keytool -genkeypair -keystore lkmdet.keystore \
         -storepass android -keypass android -alias lkmdet \
         -keyalg RSA -keysize 2048 -validity 10000 \
-        -dname "CN=LKMDet, O=WildKernels" >/dev/null 2>&1
+        -dname "CN=WildDetector, O=WildKernels" >/dev/null 2>&1
 fi
 
-echo "[3/7] javac"
-mkdir -p build/obj build/stage/lib/arm64-v8a
-javac --release 8 -classpath "$AJAR" -d build/obj \
-    app/src/com/wildkernels/lkmdetector/MainActivity.java
+build_one() { # $1 = java source, $2 = manifest, $3 = out apk
+    local SRC="$1" MF="$2" OUT="$3"
+    local TAG; TAG=$(basename "$OUT" .apk)
+    mkdir -p "build/$TAG/obj" "build/$TAG/stage/lib/arm64-v8a"
+    find "build/$TAG/obj" -name '*.class' -delete 2>/dev/null || true
+    echo "[3] $TAG: javac"
+    javac --release 8 -classpath "$AJAR" -d "build/$TAG/obj" "$SRC"
+    echo "[4] $TAG: d8"
+    "$BT/d8" --release --lib "$AJAR" --min-api 26 --output "build/$TAG/obj" \
+        $(find "build/$TAG/obj" -name '*.class')
+    echo "[5] $TAG: aapt2 link"
+    "$BT/aapt2" link --manifest "$MF" -I "$AJAR" -o "build/$TAG/unsigned.apk"
+    echo "[6] $TAG: package"
+    cp jniLibs/arm64-v8a/liblkmdet.so "build/$TAG/stage/lib/arm64-v8a/"
+    cp "build/$TAG/obj/classes.dex" "build/$TAG/stage/"
+    ( cd "build/$TAG/stage" && jar -uf "../unsigned.apk" classes.dex lib/arm64-v8a/liblkmdet.so )
+    echo "[7] $TAG: zipalign + sign"
+    "$BT/zipalign" -f 4 "build/$TAG/unsigned.apk" "build/$TAG/aligned.apk"
+    "$BT/apksigner" sign --ks lkmdet.keystore --ks-pass pass:android \
+        --key-pass pass:android --out "$OUT" "build/$TAG/aligned.apk"
+    "$BT/apksigner" verify --print-certs "$OUT" >/dev/null
+    echo "built $OUT"
+}
 
-echo "[4/7] d8"
-"$BT/d8" --release --lib "$AJAR" --min-api 26 --output build/obj \
-    $(find build/obj -name '*.class')
-
-echo "[5/7] aapt2 link"
-"$BT/aapt2" link --manifest app/AndroidManifest.xml -I "$AJAR" \
-    -o build/unsigned.apk
-
-echo "[6/7] package classes.dex + lib"
-cp jniLibs/arm64-v8a/liblkmdet.so build/stage/lib/arm64-v8a/
-cp build/obj/classes.dex build/stage/
-( cd build/stage && jar -uf ../unsigned.apk classes.dex lib/arm64-v8a/liblkmdet.so )
-
-echo "[7/7] zipalign + sign"
-"$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
-"$BT/apksigner" sign --ks lkmdet.keystore --ks-pass pass:android \
-    --key-pass pass:android --out LKMDet.apk build/aligned.apk
-"$BT/apksigner" verify --print-certs LKMDet.apk
+build_one app/src/com/wildkernels/lkmdetector/MainActivity.java  app/AndroidManifest.xml  WildDetector.apk
+build_one app2/src/com/wildkernels/wilddetector/rev/MainActivity.java app2/AndroidManifest.xml WildDetectorRev.apk
+build_one app3/src/com/wildkernels/wilddetector/x/MainActivity.java   app3/AndroidManifest.xml WildDetectorX.apk
 echo
-ls -la LKMDet.apk
+ls -la WildDetector*.apk

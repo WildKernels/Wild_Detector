@@ -66,11 +66,10 @@ jobs:
             echo "WARNING: LKMDET_KEYSTORE secret not set - generating a fresh key (signature will differ per run)"
           fi
 
-      - name: Build LKMDet.apk + lkmdet binary
+      - name: Build the three Wild Detector APKs
         run: |
-          chmod +x build-apk.sh build.sh
+          chmod +x build-apk.sh
           ./build-apk.sh
-          ./build.sh
 
       - name: Tag next vN
         id: tag
@@ -103,18 +102,23 @@ jobs:
           echo "::error::could not claim a tag number after 5 attempts"
           exit 1
 
-      - name: Release with APK + binary
+      - name: Release with the three APKs
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          cp LKMDet.apk "LKMDet-$TAG.apk"
-          cp lkmdet "lkmdet-$TAG"
-          gh release create "$TAG" "LKMDet-$TAG.apk" "lkmdet-$TAG" \
+          cp WildDetector.apk "WildDetector-$TAG.apk"
+          cp WildDetectorRev.apk "WildDetectorRev-$TAG.apk"
+          cp WildDetectorX.apk "WildDetectorX-$TAG.apk"
+          gh release create "$TAG" \
+            "WildDetector-$TAG.apk" "WildDetectorRev-$TAG.apk" "WildDetectorX-$TAG.apk" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --generate-notes \
-            --notes "Non-root susfs LKM detector.
+            --notes "Wild Detector - non-root susfs LKM detector. Three looks, same engine.
 
-          - \`LKMDet-$TAG.apk\` - zero-permission app (same engine, all probes)
-          - \`lkmdet-$TAG\` - arm64 adb-shell binary (push to /data/local/tmp)"
+          - \`WildDetector-$TAG.apk\` - bear-card design (installs over the old LKM Detector)
+          - \`WildDetectorRev-$TAG.apk\` - reveny Native-Detector design
+          - \`WildDetectorX-$TAG.apk\` - all-new Wild design
+
+          Install all three side by side and pick the look you like."

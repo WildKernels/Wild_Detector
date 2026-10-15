@@ -44,10 +44,8 @@ public class MainActivity extends Activity {
     static { System.loadLibrary("lkmdet"); }
 
     private native String nativeBanner();
-    private native String nativeP1();
     private native String nativeP2(int seconds);
     private native String nativeP6();
-    private native String nativeP7();
     private native String nativeVerdict();
     private native int nativeFindings();
     private native int nativeProbeResult(int which);
@@ -58,10 +56,10 @@ public class MainActivity extends Activity {
             "https://github.com/eltavine/Duck-Detector-Refactoring";
 
     private static final String[] PROBES = {
-        "Placeholder scan", "mprotect/uaccess race", "O_PATH consistency", "Syscall timing",
+        "mprotect/uaccess race", "O_PATH consistency",
     };
     /* original engine probe numbers, for nativeProbeResult() */
-    private static final int[] PN = { 1, 2, 6, 7 };
+    private static final int[] PN = { 2, 6 };
 
     private interface Probe { String run(); }
 
@@ -72,12 +70,12 @@ public class MainActivity extends Activity {
     private Button btn;
     private LinearLayout bannerCard;
     private TextView bannerHead, bannerSub, statusLine;
-    private TextView[] chips = new TextView[4];
-    private TextView[] details = new TextView[4];
-    private TextView[] chevs = new TextView[4];
-    private String[] results = new String[4];
-    private String[] labels = new String[4];
-    private LinearLayout[] cards = new LinearLayout[4];
+    private TextView[] chips = new TextView[2];
+    private TextView[] details = new TextView[2];
+    private TextView[] chevs = new TextView[2];
+    private String[] results = new String[2];
+    private String[] labels = new String[2];
+    private LinearLayout[] cards = new LinearLayout[2];
     private Handler ui;
 
     @Override protected void onCreate(Bundle b) {
@@ -103,7 +101,7 @@ public class MainActivity extends Activity {
 
         /* large title */
         TextView title = new TextView(this);
-        title.setText("\uD83D\uDC3B LKM Detector");
+        title.setText("\uD83D\uDC3B Wild Detector");
         title.setTextSize(34f);
         title.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         title.setTextColor(TEXT);
@@ -153,7 +151,7 @@ public class MainActivity extends Activity {
 
         /* status line */
         statusLine = new TextView(this);
-        statusLine.setText("4 checks \u00B7 zero permissions \u00B7 zero root");
+        statusLine.setText("2 checks \u00B7 zero permissions \u00B7 zero root");
         statusLine.setTextSize(13f);
         statusLine.setTextColor(TEXT2);
         statusLine.setPadding(0, (int) dp(12), 0, 0);
@@ -282,7 +280,7 @@ public class MainActivity extends Activity {
         btn.setEnabled(false);
         btn.setText("Scanning...");
         bannerCard.setVisibility(View.GONE);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 2; i++) {
             cards[i].setVisibility(View.VISIBLE);
             details[i].setText("");
             details[i].setVisibility(View.GONE);
@@ -291,7 +289,7 @@ public class MainActivity extends Activity {
             setChip(chips[i], "IDLE", TEXT2);
         }
         final Probe[] probes = {
-            () -> nativeP1(), () -> nativeP2(10), () -> nativeP6(), () -> nativeP7(),
+            () -> nativeP2(10), () -> nativeP6(),
         };
         new Thread(() -> {
             int hits = 0, blocked = 0;
@@ -311,10 +309,7 @@ public class MainActivity extends Activity {
                     boolean unreadable = r.contains("unreadable: Permission denied");
                     int hit = 0;
                     try { hit = nativeProbeResult(PN[i]); } catch (Throwable ignored) { }
-                    if (i == 3) {
-                        labels[i] = "INFO";
-                        setChip(chips[i], "INFO", TEXT2);
-                    } else if (hit == 1) {
+                    if (hit == 1) {
                         hits++;
                         labels[i] = "DETECTED";
                         setChip(chips[i], "DETECTED", CRIT);
@@ -387,9 +382,9 @@ public class MainActivity extends Activity {
             bannerCard.setAlpha(0f);
             bannerCard.setVisibility(View.VISIBLE);
             bannerCard.animate().alpha(1f).setDuration(250).start();
-            int pass = 4 - hits - blocked - 1; /* minus timing info */
+            int pass = 2 - hits - blocked;
             statusLine.setText(pass + " pass \u00B7 " + hits + " detected \u00B7 " + blocked + " blocked");
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 2; i++)
                 if (!"DETECTED".equals(labels[i]))
                     cards[i].setVisibility(View.GONE);
             scroll.post(() -> scroll.smoothScrollTo(0, 0));
@@ -411,7 +406,7 @@ public class MainActivity extends Activity {
             default: sb.append("\nPASS: no susfs LKM detected\n"); break;
         }
         boolean any = false;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 2; i++) {
             if ("DETECTED".equals(labels[i]) && results[i] != null) {
                 any = true;
                 sb.append("\n[P").append(PN[i]).append("] ").append(PROBES[i]).append(" - DETECTED\n");
@@ -431,7 +426,7 @@ public class MainActivity extends Activity {
                 Uri base = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
                 Cursor c = getContentResolver().query(base, null,
                         MediaStore.MediaColumns.DISPLAY_NAME + "=?",
-                        new String[]{"lkmdet_result.txt"}, null);
+                        new String[]{"wildetector_result.txt"}, null);
                 if (c != null) {
                     while (c.moveToNext()) {
                         long id = c.getLong(c.getColumnIndex(MediaStore.MediaColumns._ID));
@@ -442,7 +437,7 @@ public class MainActivity extends Activity {
                     c.close();
                 }
                 ContentValues cv = new ContentValues();
-                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, "lkmdet_result.txt");
+                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, "wildetector_result.txt");
                 cv.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
                 cv.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
                 Uri uri = getContentResolver().insert(base, cv);
@@ -451,7 +446,7 @@ public class MainActivity extends Activity {
                     if (os != null) {
                         os.write(text.getBytes("UTF-8"));
                         os.close();
-                        where = "Downloads/lkmdet_result.txt";
+                        where = "Downloads/wildetector_result.txt";
                     }
                 }
             } catch (Exception e) {
@@ -463,7 +458,7 @@ public class MainActivity extends Activity {
             try {
                 File dir = getExternalFilesDir(null);
                 if (dir == null) dir = getFilesDir();
-                File f = new File(dir, "lkmdet_result.txt");
+                File f = new File(dir, "wildetector_result.txt");
                 FileWriter w = new FileWriter(f, false);
                 w.write(text);
                 w.close();
