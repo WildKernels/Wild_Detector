@@ -19,10 +19,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.os.LocaleListCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.reveny.nativecheck.R
-import com.reveny.nativecheck.datastore.model.Language
+import com.reveny.nativecheck.datastore.model.Language as LanguagePref
 import com.reveny.nativecheck.viewmodel.SettingsViewModel
 import compose.icons.TablerIcons
-import compose.icons.tablericons.outline.Language as LanguageIcon
+import compose.icons.tablericons.outline.Language
 import java.util.Locale
 
 private val LanguageItems = LanguageEntry.entries.toTypedArray()
@@ -37,7 +37,7 @@ fun LanguageMenu() {
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(
-                LanguageIcon,
+                TablerIcons.Outline.Language,
                 contentDescription = stringResource(R.string.pref_language)
             )
         }
@@ -62,25 +62,25 @@ fun LanguageMenu() {
 }
 
 private enum class LanguageEntry(
-    val value: Language,
+    val value: LanguagePref,
     val locale: Locale?,
     val text: Int,
 ) {
     @SuppressLint("ConstantLocale")
-    ENGLISH(Language.ENGLISH, Locale("en"), R.string.en),
-    ARABIC(Language.ARABIC, Locale("ar"), R.string.ar),
-    GERMAN(Language.GERMAN, Locale("de"), R.string.de),
-    GREEK(Language.GREEK, Locale("el"), R.string.el),
-    SPANISH(Language.SPANISH, Locale("es"), R.string.es),
-    INDONESIAN(Language.INDONESIAN, Locale("id"), R.string.id),
-    JAPANESE(Language.JAPANESE, Locale("ja"), R.string.ja),
-    POLISH(Language.POLISH, Locale("pl"), R.string.pl),
-    PORTUGUESE_BRAZIL(Language.PORTUGUESE_BRAZIL, Locale("pt", "BR"), R.string.pt_br),
-    RUSSIAN(Language.RUSSIAN, Locale("ru"), R.string.ru),
-    SLOVENIAN(Language.SLOVENIAN, Locale("sl"), R.string.sl),
-    TURKISH_TURKEY(Language.TURKISH_TURKEY, Locale("tr", "TR"), R.string.tr_tr),
-    VIETNAMESE(Language.VIETNAMESE, Locale("vi"), R.string.vi),
-    CHINESE_SIMPLIFIED(Language.CHINESE_SIMPLIFIED, Locale("zh", "CN"), R.string.zh_cn),
-    CHINESE_TRADITIONAL(Language.CHINESE_TRADITIONAL, Locale("zh", "TW"), R.string.zh_tw),
-    BULGARIAN(Language.BULGARIAN, Locale("bg"), R.string.bg)
+    ENGLISH(LanguagePref.ENGLISH, Locale("en"), R.string.en),
+    ARABIC(LanguagePref.ARABIC, Locale("ar"), R.string.ar),
+    GERMAN(LanguagePref.GERMAN, Locale("de"), R.string.de),
+    GREEK(LanguagePref.GREEK, Locale("el"), R.string.el),
+    SPANISH(LanguagePref.SPANISH, Locale("es"), R.string.es),
+    INDONESIAN(LanguagePref.INDONESIAN, Locale("id"), R.string.id),
+    JAPANESE(LanguagePref.JAPANESE, Locale("ja"), R.string.ja),
+    POLISH(LanguagePref.POLISH, Locale("pl"), R.string.pl),
+    PORTUGUESE_BRAZIL(LanguagePref.PORTUGUESE_BRAZIL, Locale("pt", "BR"), R.string.pt_br),
+    RUSSIAN(LanguagePref.RUSSIAN, Locale("ru"), R.string.ru),
+    SLOVENIAN(LanguagePref.SLOVENIAN, Locale("sl"), R.string.sl),
+    TURKISH_TURKEY(LanguagePref.TURKISH_TURKEY, Locale("tr", "TR"), R.string.tr_tr),
+    VIETNAMESE(LanguagePref.VIETNAMESE, Locale("vi"), R.string.vi),
+    CHINESE_SIMPLIFIED(LanguagePref.CHINESE_SIMPLIFIED, Locale("zh", "CN"), R.string.zh_cn),
+    CHINESE_TRADITIONAL(LanguagePref.CHINESE_TRADITIONAL, Locale("zh", "TW"), R.string.zh_tw),
+    BULGARIAN(LanguagePref.BULGARIAN, Locale("bg"), R.string.bg)
 }
