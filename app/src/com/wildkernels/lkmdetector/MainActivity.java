@@ -424,12 +424,6 @@ public class MainActivity extends Activity {
             }
         }
         if (!any) sb.append("\n(no detections)\n");
-        sb.append("\nProbe summary: ");
-        for (int i = 0; i < 7; i++) {
-            if (i > 0) sb.append(" | ");
-            sb.append("P").append(i + 1).append(" ").append(labels[i] == null ? "-" : labels[i]);
-        }
-        sb.append('\n');
 
         final String text = sb.toString();
         String where = null;
