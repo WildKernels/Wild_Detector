@@ -114,3 +114,10 @@ correct "built-in/clean" verdict. Hosted clean-kernel baseline matches.
 
 Source of every oracle: the susfs4ksu-lkm audit (2026-10), repos kept at
 `~/Projects/susfs4ksu-lkm` and `~/Projects/susfs4ksu`.
+
+## Credits
+
+- **UI design** — modeled on [Duck Detector](https://github.com/eltavine/Duck-Detector-Refactoring)
+  by Eltavine (Apache-2.0): its iOS-grouped dark dashboard look — card, hairline
+  and status-pill design tokens plus its typography scale. No detection code or
+  logic is derived from it; every probe and verdict here is original.

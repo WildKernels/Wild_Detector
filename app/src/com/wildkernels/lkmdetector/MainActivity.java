@@ -3,6 +3,7 @@ package com.wildkernels.lkmdetector;
 import android.app.Activity;
 import android.content.ContentUris;
 import android.content.ContentValues;
+import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -34,7 +35,7 @@ import java.util.Locale;
 /**
  * Duck-style (iOS grouped dark) skin over the LKM detection engine.
  * Look modeled on eltavine/Duck-Detector-Refactoring (Apache-2.0) design tokens;
- * detections are entirely our own.
+ * detections are entirely our own. See the Credits footer and README.
  */
 public class MainActivity extends Activity {
     static { System.loadLibrary("lkmdet"); }
@@ -64,6 +65,9 @@ public class MainActivity extends Activity {
     private static final int NEUT    = 0xFF98989D;
     private static final int BTN     = 0xFFE5E5EA;
     private static final int BTN_TXT = 0xFF1C1C1E;
+
+    private static final String DUCK_URL =
+            "https://github.com/eltavine/Duck-Detector-Refactoring";
 
     private static final String[] PROBES = {
         "Placeholder scan", "mprotect/uaccess race", "Kernel taint flags",
@@ -112,7 +116,7 @@ public class MainActivity extends Activity {
         title.setLetterSpacing(-0.015f);
         content.addView(title);
         TextView subtitle = new TextView(this);
-        subtitle.setText("v1.3 \u00B7 non-root susfs LKM detector \u00B7 zero permissions");
+        subtitle.setText("v1.4 \u00B7 non-root susfs LKM detector \u00B7 zero permissions");
         subtitle.setTextSize(12f);
         subtitle.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         subtitle.setTextColor(TEXT2);
@@ -189,6 +193,22 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, -2);
         blp.topMargin = (int) dp(24);
         content.addView(btn, blp);
+
+        /* credits (tap opens the Duck Detector repo) */
+        TextView credit = new TextView(this);
+        credit.setText("UI design based on Duck Detector by Eltavine (Apache-2.0)\n"
+                + DUCK_URL + " - detections are our own");
+        credit.setTextSize(11f);
+        credit.setTextColor(TEXT2);
+        credit.setPadding((int) dp(4), (int) dp(16), (int) dp(4), 0);
+        credit.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(DUCK_URL)));
+            } catch (Throwable t) {
+                Toast.makeText(this, DUCK_URL, Toast.LENGTH_LONG).show();
+            }
+        });
+        content.addView(credit);
 
         scroll = new ScrollView(this);
         scroll.setBackgroundColor(PAGE);
