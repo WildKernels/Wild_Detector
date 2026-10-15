@@ -49,7 +49,7 @@ hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", v
 javaxInject = { group = "javax.inject", name = "javax.inject", version = "1" }
 
 # protobuf bundle
-kotlinx-serialization-protobuf = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-protobuf", version = "1.8.0" }
+kotlinx-serialization-protobuf = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-protobuf", version = "1.11.0" }
 
 # core bundle
 material-kolor = { group = "com.materialkolor", name = "material-kolor", version = "2.0.2" }
