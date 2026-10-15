@@ -1,0 +1,76 @@
+import com.android.build.api.dsl.ApplicationDefaultConfig
+import com.android.build.api.dsl.CommonExtension
+import com.android.build.gradle.api.AndroidBasePlugin
+
+buildscript {
+    ext {
+        defaultPackageName = 'com.reveny.nativecheck'
+        verCode = 662
+        verName = '6.6.2'
+        androidTargetSdkVersion = 35
+        androidMinSdkVersion = 27
+        androidCompileSdkVersion = 35
+        androidCompileNdkVersion = '28.0.13004108'
+        androidSourceCompatibility = JavaVersion.VERSION_21
+        androidTargetCompatibility = JavaVersion.VERSION_21
+    }
+}
+
+plugins {
+    alias(libs.plugins.agp.app) apply false
+    alias(libs.plugins.agp.lib) apply false
+    alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.kotlin.parcelize) apply false
+    alias(libs.plugins.hilt) apply false
+    alias(libs.plugins.compose.compiler) apply false
+    alias(libs.plugins.ksp) apply false
+}
+
+subprojects {
+    plugins.withType(AndroidBasePlugin).configureEach {
+        extensions.configure(CommonExtension) { ext ->
+            ext.compileSdk = androidCompileSdkVersion
+            ext.ndkVersion = androidCompileNdkVersion
+
+            ext.defaultConfig { config ->
+                config.minSdk = androidMinSdkVersion
+                if (config instanceof ApplicationDefaultConfig) {
+                    config.targetSdk = androidTargetSdkVersion
+                    config.versionCode = verCode
+                    config.versionName = verName
+                }
+            }
+
+            ext.lint {
+                abortOnError = true
+                checkReleaseBuilds = false
+            }
+
+            ext.compileOptions {
+                sourceCompatibility = androidSourceCompatibility
+                targetCompatibility = androidTargetCompatibility
+            }
+
+            ext.buildFeatures {
+                compose = true
+                buildConfig = true
+                prefab = true
+            }
+
+            ext.packaging.resources.excludes += [
+                "kotlin/**",
+                "org/**",
+                "**.properties",
+                "**.bin",
+                "**.proto",
+            ]
+        }
+    }
+    plugins.withType(JavaPlugin) {
+        extensions.configure(JavaPluginExtension) { ext ->
+            ext.sourceCompatibility = androidSourceCompatibility
+            ext.targetCompatibility = androidTargetCompatibility
+        }
+    }
+}

@@ -1,14 +1,7 @@
 name: Auto-tag + release
 
-# On every push to main (or a manual dispatch): build APK + adb binary,
-# claim the next free vN tag, publish a GitHub release with both assets.
-# Build runs BEFORE tagging so a broken build burns no version number.
-# Tag pushes do not re-trigger this workflow (branch filter).
-#
-# The ubuntu-latest runner image ships the Android SDK with cmdline-tools
-# preinstalled at /usr/local/lib/android/sdk (ANDROID_HOME) — no setup
-# action needed (android-actions/setup-android@v3 is broken: it installs
-# the removed 'tools' package).
+# Every push to main: gradle assembles the release APK (Native Detector base
+# + libwild engine), claims the next free vN tag, publishes a release.
 
 on:
   push:
@@ -28,48 +21,26 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
-      - name: Install platform + build-tools + NDK
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: SDK components (pinned NDK + cmake + platform 35)
         run: |
           set -e
           SM="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
-          echo "sdkmanager: $SM"
           yes | "$SM" --licenses >/dev/null 2>&1 || true
-          "$SM" --list >/tmp/pkgs 2>/dev/null || true
-          # newest stable of each (google prunes old package versions over time)
-          PLAT=$(grep -vE 'canary|beta|preview|rc' /tmp/pkgs | grep -Eo 'platforms;android-[0-9]+(\.[0-9]+)?' | sort -Vu | tail -1)
-          BT=$(grep -vE 'canary|beta|preview|rc' /tmp/pkgs | grep -Eo 'build-tools;[0-9]+(\.[0-9]+)+' | sort -Vu | tail -1)
-          NDK_PKG=$(grep -vE 'canary|beta|preview|rc' /tmp/pkgs | grep -Eo 'ndk;[0-9]+(\.[0-9]+)+' | sort -Vu | tail -1)
-          if [ -z "$PLAT" ] || [ -z "$BT" ] || [ -z "$NDK_PKG" ]; then
-            echo "::error::package resolution failed (plat='$PLAT' bt='$BT' ndk='$NDK_PKG')"
-            exit 1
-          fi
-          echo "installing: $PLAT $BT $NDK_PKG"
-          "$SM" --install "$PLAT" "$BT" "$NDK_PKG" \
-            >/dev/null 2>install.log || { tail -50 install.log; exit 1; }
-          echo "SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "NDK_ROOT=$(ls -d "$ANDROID_HOME"/ndk/* | head -1)" >> "$GITHUB_ENV"
+          "$SM" --install "ndk;28.0.13004108" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"             >/dev/null 2>&1 || echo "sdkmanager partial - AGP will auto-download what is missing"
 
-      - name: Restore signing keystore
-        env:
-          KEY_B64: ${{ secrets.LKMDET_KEYSTORE }}
+      - name: Build release APK
         run: |
-          if [ -n "$KEY_B64" ]; then
-            printf '%s' "$KEY_B64" | base64 -d > lkmdet.keystore
-            echo "keystore restored from repo secret"
-          else
-            echo "WARNING: LKMDET_KEYSTORE secret not set - generating a fresh key (signature will differ per run)"
-          fi
-
-      - name: Build the three Wild Detector APKs
-        run: |
-          chmod +x build-apk.sh
-          ./build-apk.sh
+          chmod +x gradlew
+          ./gradlew assembleRelease
 
       - name: Tag next vN
         id: tag
@@ -102,14 +73,14 @@ jobs:
           echo "::error::could not claim a tag number after 5 attempts"
           exit 1
 
-      - name: Release with the three APKs
+      - name: Release the APK
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          cp WildDetector.apk "WildDetector-$TAG.apk"
+          cp app/build/outputs/apk/release/app-release.apk "WildDetector-$TAG.apk"
           gh release create "$TAG" "WildDetector-$TAG.apk" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --generate-notes \
-            --notes "Wild Detector - detects the susfs4ksu-lkm loadable-module port.\n\n          - \`WildDetector-$TAG.apk\` - zero-permission app (installs over older LKMDet releases)"
+            --notes "Wild Detector - reveny Native Detector base (unchanged UI) with the libwild susfs4ksu-lkm engine filling the detection placeholder."

@@ -1,131 +1,35 @@
-# Wild Detector (lkmdet) — non-root susfs LKM detector (arm64)
+# Wild Detector
 
-Detects the **LKM port of susfs** (`inforcqb/susfs4ksu-lkm`, module
-`susfs_guard_lkm`) **without root**, and distinguishes it from a clean
-kernel and from built-in susfs. Two frontends, one engine:
+Detects the **susfs4ksu-lkm** loadable-module port (inforcqb's LKM build of
+susfs4ksu) from a normal, unprivileged app process. Zero root needed.
 
-- `lkmdet` — standalone adb-shell binary (uid 2000 = the exact non-root
-  surface the LKM's self-hide rules are written against)
-- `LKMDet.apk` — zero-permission installable app (same probes via JNI)
+This app is [reveny's Native Detector](https://github.com/reveny/Android-Native-Root-Detector)
+(MIT) used as the base, **as-is**: the entire UI, settings, update checker and
+layout are upstream code. The only changes:
 
-Everything is unprivileged syscalls + world-readable files. Running as
-root is pointless — the LKM's self-hide rules only apply to non-root
-callers.
+- the detection placeholder (`MainViewModel.getDetections`, which upstream
+  returns `emptyList()`) is filled with the real engine
+- the native library is **libwild** (`System.loadLibrary("wild")`), built from
+  `app/src/main/cpp/`: the lkmdet engine + a JNI bridge for
+  `Native.getDetections`
+- the app label is Wild Detector
 
-## Probes
+## What it detects
 
-- **P1 zero-ino placeholder records** (deterministic): the LKM rewrites
-  getdents64 buffers *after* the syscall. When a whole chunk is hidden it
-  emits a `d_ino=0`/empty-name placeholder record (sus_path.c:1612-1648)
-  because returning 0 would read as early-EOF. Clean kernels never emit
-  one (procfs/sysfs inos are never 0); built-in susfs never emits one (its
-  filldir64 hook drops the entry before it reaches the buffer). Forced
-  deterministically with 56-byte (single-record) chunks over `/proc` and
-  `/sys/module`.
-- **P2 mprotect/uaccess race** (probabilistic, definitive on hit): the
-  post-hoc compaction runs under `pagefault_disable()`; a second thread
-  flipping the listing buffer to `PROT_NONE` mid-syscall makes it fault →
-  the filter bails and returns the *unfiltered* buffer
-  (sus_path.c:1603-1609), and the tail-scrub leak is documented in their
-  own comment (sus_path.c:1651+). Literal `susfs_*` names come back. The
-  toggler thread parks behind a seq-cst settled handshake so it can never
-  leave the buffer `PROT_NONE` while the parser reads it.
-- **P3 /proc/sys/kernel/tainted**: the module has zero taint-scrub code;
-  an out-of-tree/unsigned `.ko` sets O (bit 10) / E (bit 11) forever.
-  Built-in susfs never taints.
-- **P4 /proc/modules grep**: line is normally filtered for every caller
-  by an m_show kprobe; leaks if that probe ever fails to arm.
-- **P5 /proc/kallsyms grep**: `[susfs_guard_lkm]`-tagged lines = LKM;
-  bare `susfs_*` kernel symbols = **built-in susfs built without
-  `CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS`** (fix the defconfig).
-- **P6 O_PATH/fstat consistency** on the LKM's own `/proc/susfs_*` nodes:
-  `open(O_PATH)` ok + `fstat → ENOENT` is impossible on a clean kernel;
-  fires when the module's non-fatal opath layer failed to install.
-- **P7 syscall latency medians** (INFO): gettid control vs statx vs
-  reboot-with-susfs-magic (binary only — the app sandbox's seccomp filter
-  SIGSYS-kills any app calling reboot(2), so the APK skips it and reports
-  the gettid/statx pair). Kprobe BRK hooks add ~1-2 µs per hooked call.
+Only real detections are reported (clean device -> empty list -> the app shows
+"The Environment is normal"):
 
-## Binary usage
+- **getdents64 race leak** - the LKM hides its `/proc/susfs_*` entries from
+  directory listings, but the hidden names leak out of the kernel buffer
+  during an mprotect/uaccess race
+- **/proc O_PATH inconsistency** - the LKM's hiding layer fails open:
+  `/proc/susfs_*` passes `open(O_PATH)` but `fstat` reports `ENOENT`,
+  impossible on a clean kernel
 
-```sh
-./build.sh                                   # NDK clang, arm64
-adb push lkmdet /data/local/tmp/lkmdet
-adb shell chmod 755 /data/local/tmp/lkmdet
-adb shell /data/local/tmp/lkmdet             # full run (~12s, 10s race)
-adb shell /data/local/tmp/lkmdet -r 30       # longer race budget
-adb shell /data/local/tmp/lkmdet -d /data/local/tmp   # extra scan dir
-```
-
-## APK
-
-```sh
-./build-apk.sh          # NDK lib + javac + d8 + aapt2 + zipalign + apksigner
-adb install -r WildDetector.apk
-adb shell am start -n com.wildkernels.lkmdetector/.MainActivity
-```
-
-- Zero Android permissions (no manifest `uses-permission` at all).
-- Card UI modeled on reveny's Native Detector; verdict banner sits directly
-  under the title, one rounded card per probe, tap a card with findings to
-  expand its details. The app shows **detections only** — clean probes get a
-  PASS chip and nothing else.
-- Full verbose output mirrors to `adb logcat -s LKMDET`. The on-device report
-  is detections-only and saves to public **Downloads** as `lkmdet_result.txt`
-  (MediaStore, no permission needed); pre-29 devices fall back to the app
-  files dir, pullable without root via
-  `adb shell run-as com.wildkernels.lkmdetector cat files/lkmdet_result.txt`.
-- `build-apk.sh` generates a local keystore on first run
-  (`lkmdet.keystore`, gitignored — never commit it).
-
-Both scripts assume NDK at `/opt/android-ndk` and SDK at
-`/opt/android-sdk` (edit the top of each script to move them).
-
-## CI: auto tag + release
-
-`.github/workflows/autotag.yml` — every push to `main` (or manual
-`workflow_dispatch`) builds both frontends, claims the next `vN` tag, and
-publishes a GitHub release with:
-
-- `LKMDet-vN.apk` — signed with the repo secret `LKMDET_KEYSTORE`
-- `lkmdet-vN` — arm64 adb-shell binary
-
-The build runs **before** tagging, so a broken build burns no version
-number. Releases are signed with the repo secret so every release
-installs over the previous one. First-time setup from a fresh clone:
-
-```sh
-./build-apk.sh                    # generates lkmdet.keystore locally
-base64 -w0 lkmdet.keystore | gh secret set LKMDET_KEYSTORE --repo TheWildJames/Wild_Detector
-```
-
-Without the secret the workflow still builds, but with a fresh key per
-run (updates then need an uninstall first).
-
-## Verdict semantics
-
-- **LKM DETECTED** — placeholder, leak, impossible-state, module-tagged
-  symbols, or /proc/modules line.
-- **built-in, symbols exposed** — fix the defconfig.
-- **taint O/E only** — unsigned module loaded, LKM prime suspect.
-- **clean** — indistinguishable from properly hidden built-in susfs (by
-  design; that indistinguishability *is* the argument for built-in).
-
-## Baseline on WildKernels
-
-Pixel 8, `6.1.157-android14-Wild` (built-in susfs): all probes negative —
-0 placeholders, no leak, no taint flags, no visible symbols — i.e. the
-correct "built-in/clean" verdict. Hosted clean-kernel baseline matches.
-
-Source of every oracle: the susfs4ksu-lkm audit (2026-10), repos kept at
-`~/Projects/susfs4ksu-lkm` and `~/Projects/susfs4ksu`.
+Built-in susfs (e.g. WildKernels) does not trip either probe.
 
 ## Credits
 
-- **UI design (v1.5+)** — modeled on [Native Root Detector](https://github.com/reveny/Android-Native-Root-Detector)
-  by Reveny (MIT): verdict-first banner layout, flat rounded detection cards,
-  expandable details.
-- **UI design (v1.3–v1.4)** — modeled on [Duck Detector](https://github.com/eltavine/Duck-Detector-Refactoring)
-  by Eltavine (Apache-2.0): iOS-grouped dark dashboard tokens and typography.
-- No detection code or logic is derived from either; every probe and verdict
-  here is original.
+- App: [reveny/Android-Native-Root-Detector](https://github.com/reveny/Android-Native-Root-Detector)
+  (MIT) - used unchanged as the base
+- Engine: lkmdet, from the WildKernels susfs LKM audit

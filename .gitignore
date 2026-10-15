@@ -1,16 +1,9 @@
-# build outputs
-build/
-lkmdet
-lkmdet_host
-jniLibs/
-*.o
-
-# release artifacts
-LKMDet.apk
-
-# signing key — never commit
-lkmdet.keystore
-
-# apksigner v4 signature sidecar
+*.apk
 *.idsig
-WildDetector*.apk
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.cxx/
+captures/
