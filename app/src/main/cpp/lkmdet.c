@@ -104,6 +104,8 @@ static int g_ph_total, g_race_hit, g_opath_weird, g_mod_hits, g_ks_lkm, g_ks_tot
 static unsigned long long g_taint;
 static int g_oot, g_unsign;
 static int g_p8_hits, g_p9_weird, g_p10_hits;
+static int g_dmesg_hits, g_kprobe_hits, g_ksym_anomaly;
+static unsigned long g_ksym_total;
 static double g_race_sec = 10.0;
 static const char *g_extra_dirs[8];
 static int g_nextra;
@@ -805,6 +807,128 @@ static void probe_p10(void)
     g_p10_hits = hits;
 }
 
+/* ---------------- P11: dmesg susfs grep ---------------- */
+/*
+ * If the susfs LKM was loaded at boot, dmesg may carry its init messages,
+ * module load lines, or self-hide activity. Only readable with dmesg_restrict=0
+ * (or as root).
+ */
+static void probe_p11(void)
+{
+    g_dmesg_hits = 0;
+    size_t len;
+    char *b = read_all("/dev/kmsg", (size_t)16 << 20, &len);
+    if (!b) {
+        /* /dev/kmsg may be restricted; fall back to dmesg via popen? Not in C.
+         * Just report unreadable. */
+        fprintf(g_out, "    dmesg: unreadable (dmesg_restrict or no root)\\n");
+        return;
+    }
+    const char *const pats[] = { "susfs", "guard_lkm", "sus_path", "sus_map" };
+    int hits = 0, printed = 0;
+    char *save = NULL;
+    char *line = strtok_r(b, "\\n", &save);
+    while (line) {
+        for (size_t i = 0; i < sizeof(pats)/sizeof(*pats); i++) {
+            if (strstr(line, pats[i])) {
+                hits++;
+                if ((unsigned)printed < 10) {
+                    fprintf(g_out, "    >> %s\\n", line);
+                    printed++;
+                }
+                break;
+            }
+        }
+        line = strtok_r(NULL, "\\n", &save);
+    }
+    if (hits > 10)
+        fprintf(g_out, "    ... %d more matching lines\\n", hits - 10);
+    g_dmesg_hits = hits;
+    free(b);
+    if (!hits)
+        fprintf(g_out, "    no susfs lines in dmesg\\n");
+}
+
+/* ---------------- P12: /proc/kprobes active probe scan ---------------- */
+/*
+ * If the LKM hooks syscalls via kprobe (kretprobe, jprobe), they appear
+ * in /proc/kprobes. A clean production kernel normally has zero or very few
+ * kprobes; any hit on sys_* or __arm64_sys_* is suspicious.
+ */
+static void probe_p12(void)
+{
+    g_kprobe_hits = 0;
+    size_t len;
+    char *b = read_all("/proc/kprobes", (size_t)1 << 20, &len);
+    if (!b) {
+        fprintf(g_out, "    /proc/kprobes: unreadable (no root / not available)\\n");
+        return;
+    }
+    const char *const pats[] = { "sys_", "__arm64_sys_", "do_syscall", "getdents", "ksys_" };
+    int hits = 0, printed = 0;
+    char *save = NULL;
+    char *line = strtok_r(b, "\\n", &save);
+    while (line) {
+        for (size_t i = 0; i < sizeof(pats)/sizeof(*pats); i++) {
+            if (strstr(line, pats[i])) {
+                hits++;
+                if ((unsigned)printed < 10) {
+                    fprintf(g_out, "    >> %s\\n", line);
+                    printed++;
+                }
+                break;
+            }
+        }
+        line = strtok_r(NULL, "\\n", &save);
+    }
+    g_kprobe_hits = hits;
+    free(b);
+    if (!hits)
+        fprintf(g_out, "    no syscall-kprobes found (consistent)\\n");
+    else
+        fprintf(g_out, "    %d syscall-kprobe entries - possible LKM hooking\\n", hits);
+}
+
+/* ---------------- P13: kallsyms symbol-count anomaly ---------------- */
+/*
+ * An LKM adds its symbols to /proc/kallsyms. Even if susfs_* symbol names
+ * are hidden (CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS), the total symbol
+ * count shifts vs. a clean kernel baseline. We compare against a reference
+ * count and flag large deviations.
+ */
+static void probe_p13(unsigned long baseline_total)
+{
+    g_ksym_anomaly = 0;
+    g_ksym_total = 0;
+    size_t len;
+    char *b = read_all("/proc/kallsyms", (size_t)64 << 20, &len);
+    if (!b) {
+        fprintf(g_out, "    /proc/kallsyms: unreadable (kptr_restrict=2 / no root)\\n");
+        return;
+    }
+    unsigned long count = 0;
+    char *save = NULL;
+    char *line = strtok_r(b, "\\n", &save);
+    while (line) {
+        /* each line: address type symbol */
+        if (strchr(line, ' '))
+            count++;
+        line = strtok_r(NULL, "\\n", &save);
+    }
+    g_ksym_total = count;
+    free(b);
+
+    if (baseline_total > 0 && count > baseline_total * 110 / 100) {
+        g_ksym_anomaly = 1;
+        fprintf(g_out, "    kallsyms: %lu symbols vs baseline %lu (+%.0f%%) - possible "
+                "LKM symbols loaded\\n", count, baseline_total,
+                (double)(count - baseline_total) * 100.0 / (double)baseline_total);
+    } else {
+        fprintf(g_out, "    kallsyms: %lu symbols (baseline %lu) - consistent\\n",
+                count, baseline_total);
+    }
+}
+
 static void print_banner(void)
 {
 	struct utsname u;
@@ -818,7 +942,8 @@ static void print_banner(void)
 static void print_verdict(void)
 {
 	int lkm = g_ph_total || g_race_hit || g_opath_weird || g_ks_lkm > 0 || g_mod_hits
-	         || g_p8_hits || g_p9_weird || g_p10_hits;
+	         || g_p8_hits || g_p9_weird || g_p10_hits
+	         || g_dmesg_hits || g_kprobe_hits || g_ksym_anomaly;
 	if (lkm) {
 		fprintf(g_out, "susfs LKM DETECTED (non-root):\n");
 		if (g_ph_total)
@@ -836,7 +961,13 @@ static void print_verdict(void)
 		if (g_p9_weird)
 		    fprintf(g_out, "  - %d readlinkat stat/ENOENT inconsistency(s)\n", g_p9_weird);
 		if (g_p10_hits)
-		    fprintf(g_out, "  - %d open_tree dirfd bypass hit(s)\n", g_p10_hits);
+		    fprintf(g_out, "  - %d open_tree dirfd bypass hit(s)\\n", g_p10_hits);
+		if (g_dmesg_hits)
+		    fprintf(g_out, "  - %d susfs line(s) in dmesg\\n", g_dmesg_hits);
+		if (g_kprobe_hits)
+		    fprintf(g_out, "  - %d syscall kprobe entry(s)\\n", g_kprobe_hits);
+		if (g_ksym_anomaly)
+		    fprintf(g_out, "  - kallsyms symbol-count anomaly (%lu symbols)\\n", g_ksym_total);
 	} else if (g_ks_total > 0) {
 		fprintf(g_out, "No LKM, BUT bare susfs_* kernel symbols visible in kallsyms\n"
 			       "  = BUILT-IN susfs without CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS.\n"
@@ -893,6 +1024,12 @@ int main(int argc, char **argv)
 	probe_p9();
 	fprintf(g_out, "\n[P10] open_tree dirfd bypass\n");
 	probe_p10();
+	fprintf(g_out, "\n[P11] dmesg susfs boot-message grep\n");
+	probe_p11();
+	fprintf(g_out, "\n[P12] /proc/kprobes syscall-kprobe scan\n");
+	probe_p12();
+	fprintf(g_out, "\n[P13] kallsyms symbol-count check\n");
+	probe_p13(0);
 	fprintf(g_out, "\n=== VERDICT ===\n");
 	print_verdict();
 	return 0;
@@ -931,6 +1068,9 @@ static void run_p7(void)      { probe_p7(); }
 static void run_p8(void)      { probe_p8(); }
 static void run_p9(void)      { probe_p9(); }
 static void run_p10(void)     { probe_p10(); }
+static void run_p11(void)     { probe_p11(); }
+static void run_p12(void)     { probe_p12(); }
+static void run_p13(void)     { probe_p13(0); }
 static void run_verdict(void) { print_verdict(); }
 
 JNIEXPORT jstring JNICALL
@@ -978,6 +1118,18 @@ Java_com_wildkernels_lkmdetector_MainActivity_nativeP10(JNIEnv *env, jobject th)
 { (void)th; return run_probe_jni(env, run_p10); }
 
 JNIEXPORT jstring JNICALL
+Java_com_wildkernels_lkmdetector_MainActivity_nativeP11(JNIEnv *env, jobject th)
+{ (void)th; return run_probe_jni(env, run_p11); }
+
+JNIEXPORT jstring JNICALL
+Java_com_wildkernels_lkmdetector_MainActivity_nativeP12(JNIEnv *env, jobject th)
+{ (void)th; return run_probe_jni(env, run_p12); }
+
+JNIEXPORT jstring JNICALL
+Java_com_wildkernels_lkmdetector_MainActivity_nativeP13(JNIEnv *env, jobject th)
+{ (void)th; return run_probe_jni(env, run_p13); }
+
+JNIEXPORT jstring JNICALL
 Java_com_wildkernels_lkmdetector_MainActivity_nativeVerdict(JNIEnv *env, jobject th)
 { (void)th; return run_probe_jni(env, run_verdict); }
 
@@ -986,7 +1138,8 @@ Java_com_wildkernels_lkmdetector_MainActivity_nativeVerdict(JNIEnv *env, jobject
 static int findings_class(void)
 {
     if (g_ph_total || g_race_hit || g_opath_weird || g_ks_lkm > 0 || g_mod_hits
-        || g_p8_hits || g_p9_weird || g_p10_hits)
+        || g_p8_hits || g_p9_weird || g_p10_hits
+        || g_dmesg_hits || g_kprobe_hits || g_ksym_anomaly)
         return 1;
     if (g_ks_total > 0)
         return 2;
@@ -1012,6 +1165,9 @@ static int probe_result_class(int which)
 	case 8: return g_p8_hits > 0;
 	case 9: return g_p9_weird > 0;
 	case 10: return g_p10_hits > 0;
+	case 11: return g_dmesg_hits > 0;
+	case 12: return g_kprobe_hits > 0;
+	case 13: return g_ksym_anomaly > 0;
 	default: return 0;
 	}
 }
