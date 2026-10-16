@@ -94,24 +94,32 @@ Java_com_reveny_nativecheck_app_Native_getDetections(JNIEnv *env, jobject thiz,
 
     /* the two probes that actually detect the LKM (per the susfs audit);
      * the SELinux-blocked file reads never fire for app uids, so they are
-     * not part of the app flow */
+     * not part of the app flow; P8-P10 are handle/fd-based bypass probes
+     * that can see through path-based LKM hiding */
     g_race_sec = 10.0;
     char *p2r = capture_text(probe_p2);
     char *p6r = capture_text(probe_p6);
+    char *p8r = capture_text(probe_p8);
+    char *p9r = capture_text(probe_p9);
+    char *p10r = capture_text(probe_p10);
     int hit2 = probe_result_class(2);
     int hit6 = probe_result_class(6);
+    int hit8 = probe_result_class(8);
+    int hit9 = probe_result_class(9);
+    int hit10 = probe_result_class(10);
 
-    int count = (hit2 ? 1 : 0) + (hit6 ? 1 : 0);
+    int count = (hit2 ? 1 : 0) + (hit6 ? 1 : 0) + (hit8 ? 1 : 0)
+              + (hit9 ? 1 : 0) + (hit10 ? 1 : 0);
 
     jclass dcls = (*env)->FindClass(env, "com/reveny/nativecheck/app/DetectionData");
     if (!dcls) {
-        free(p2r); free(p6r);
+        free(p2r); free(p6r); free(p8r); free(p9r); free(p10r);
         return NULL;
     }
     jmethodID ctor = (*env)->GetMethodID(env, dcls, "<init>",
                                          "(Ljava/lang/String;Ljava/lang/String;)V");
     if (!ctor) {
-        free(p2r); free(p6r);
+        free(p2r); free(p6r); free(p8r); free(p9r); free(p10r);
         return NULL;
     }
     jobjectArray arr = (*env)->NewObjectArray(env, count, dcls, NULL);
@@ -133,8 +141,35 @@ Java_com_reveny_nativecheck_app_Native_getDetections(JNIEnv *env, jobject thiz,
                   "impossible on a clean kernel.",
                   p6r);
     }
+    if (hit8) {
+        add_entry(env, arr, i++, dcls, ctor,
+                  "susfs4ksu-lkm: name_to_handle_at bypass",
+                  "name_to_handle_at + open_by_handle_at reached a "
+                  "supposedly-hidden /proc/susfs_* node, meaning the LKM's "
+                  "path-based filter does not cover handle-based lookups.",
+                  p8r);
+    }
+    if (hit9) {
+        add_entry(env, arr, i++, dcls, ctor,
+                  "susfs4ksu-lkm: readlinkat stat/ENOENT inconsistency",
+                  "stat reports ENOENT for /proc/susfs_* but an O_PATH fd "
+                  "to the same node resolves via readlinkat - impossible "
+                  "on a clean kernel.",
+                  p9r);
+    }
+    if (hit10) {
+        add_entry(env, arr, i++, dcls, ctor,
+                  "susfs4ksu-lkm: open_tree dirfd bypass",
+                  "open_tree(AT_FDCWD, \"/proc\") returned a dirfd through "
+                  "which /proc/susfs_* nodes are reachable via openat, "
+                  "bypassing the getdents64-based hide filter.",
+                  p10r);
+    }
 
     free(p2r);
     free(p6r);
+    free(p8r);
+    free(p9r);
+    free(p10r);
     return arr;
 }

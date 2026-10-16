@@ -65,6 +65,18 @@
 #ifndef __NR_gettid
 #define __NR_gettid 178
 #endif
+#ifndef __NR_open_tree
+#define __NR_open_tree 437
+#endif
+#ifndef __NR_name_to_handle_at
+#define __NR_name_to_handle_at 260
+#endif
+#ifndef __NR_open_by_handle_at
+#define __NR_open_by_handle_at 261
+#endif
+#ifndef __NR_readlinkat
+#define __NR_readlinkat 267
+#endif
 #ifndef O_PATH
 #define O_PATH 010000000
 #endif
@@ -90,6 +102,7 @@ static FILE *g_out;   /* stdout in binary mode, memstream in JNI mode */
 static int g_ph_total, g_race_hit, g_opath_weird, g_mod_hits, g_ks_lkm, g_ks_total;
 static unsigned long long g_taint;
 static int g_oot, g_unsign;
+static int g_p8_hits, g_p9_weird, g_p10_hits;
 static double g_race_sec = 10.0;
 static const char *g_extra_dirs[8];
 static int g_nextra;
@@ -578,7 +591,152 @@ static void probe_p7(void)
 #endif
 }
 
-/* ---------------- banner + verdict ---------------- */
+/* ---------------- P8: name_to_handle_at bypass ---------------- */
+/*
+ * name_to_handle_at resolves a path to an opaque handle+mount pair that
+ * open_by_handle_at can then use to open the file. The LKM filters
+ * path-based lookups (getdents64, stat, open by path) but may not intercept
+ * handle-based lookups. If we can get a handle to /proc/susfs_* (which
+ * getdents64 hides and stat reports ENOENT for), that's a detection.
+ */
+struct fd_handle {
+    uint32_t handle_bytes;
+    int      handle_type;
+    char     handle[128];
+};
+
+static void probe_p8(void)
+{
+    const char *nodes[] = {
+        "/proc/susfs_path", "/proc/susfs_kstat", "/proc/susfs_map",
+        "/proc/susfs_uname", "/proc/susfs_opath"
+    };
+    size_t nn = sizeof(nodes) / sizeof(*nodes);
+    int hits = 0;
+
+    for (size_t i = 0; i < nn; i++) {
+        struct fd_handle fh;
+        int mount_id = 0;
+        memset(&fh, 0, sizeof(fh));
+        fh.handle_bytes = 128;
+        long rc = syscall(__NR_name_to_handle_at, AT_FDCWD, nodes[i],
+                          &fh, &mount_id, 0);
+        if (rc == 0) {
+            /* We got a handle - try to open via handle too */
+            int mfd = open("/proc", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+            int ofd = -1;
+            if (mfd >= 0) {
+                ofd = syscall(__NR_open_by_handle_at, mfd, &fh, O_RDONLY | O_CLOEXEC);
+                close(mfd);
+            }
+            if (ofd >= 0) {
+                fprintf(g_out, "    >> HIT %s: name_to_handle_at+open_by_handle_at "
+                        "reached a hidden node (handle-based lookup bypass)\\n", nodes[i]);
+                close(ofd);
+            } else {
+                fprintf(g_out, "    >> HIT %s: name_to_handle_at resolved a "
+                        "hidden node handle (open_by_handle_at: %s)\\n",
+                        nodes[i], ofd < 0 ? strerror(errno) : "n/a");
+            }
+            hits++;
+        } else {
+            fprintf(g_out, "    %s: name_to_handle_at -> %s\\n",
+                    nodes[i], strerror(errno));
+        }
+    }
+    if (!hits)
+        fprintf(g_out, "    all %zu nodes: name_to_handle_at blocked (consistent)\\n", nn);
+    g_p8_hits = hits;
+}
+
+/* ---------------- P9: readlinkat bypass ---------------- */
+/*
+ * open(O_PATH) on a hidden node may succeed (the LKM's open filter can be
+ * narrower than its getdents64 filter), while stat reports ENOENT.
+ * readlinkat on /proc/self/fd/<fd> resolves the fd back to its real path.
+ * stat=ENOENT but readlinkat returns a path = impossible on a clean kernel.
+ */
+static void probe_p9(void)
+{
+    const char *nodes[] = {
+        "/proc/susfs_path", "/proc/susfs_kstat", "/proc/susfs_map",
+        "/proc/susfs_uname", "/proc/susfs_opath"
+    };
+    size_t nn = sizeof(nodes) / sizeof(*nodes);
+    int hits = 0;
+
+    for (size_t i = 0; i < nn; i++) {
+        struct stat st;
+        if (stat(nodes[i], &st) == 0) {
+            fprintf(g_out, "    %s: stat succeeded (node visible)\\n", nodes[i]);
+            continue;
+        }
+        int fd = open(nodes[i], O_PATH | O_CLOEXEC);
+        if (fd < 0) {
+            fprintf(g_out, "    %s: stat ENOENT, open ENOENT (consistent)\\n", nodes[i]);
+            continue;
+        }
+        char linkbuf[256];
+        char fdpath[64];
+        snprintf(fdpath, sizeof(fdpath), "/proc/self/fd/%d", fd);
+        ssize_t r = readlinkat(AT_FDCWD, fdpath, linkbuf, sizeof(linkbuf) - 1);
+        close(fd);
+        if (r > 0) {
+            linkbuf[r] = 0;
+            fprintf(g_out, "    >> HIT %s: stat ENOENT but O_PATH fd + readlinkat -> "
+                    "'%s' (LKM bypass: node exists but stat hides it)\\n", nodes[i], linkbuf);
+            hits++;
+        } else {
+            fprintf(g_out, "    %s: open O_PATH ok but readlinkat -> %s\\n",
+                    nodes[i], strerror(errno));
+        }
+    }
+    if (!hits)
+        fprintf(g_out, "    all nodes: stat/open/readlinkat consistent\\n");
+    g_p9_weird = hits;
+}
+
+/* ---------------- P10: open_tree bypass ---------------- */
+/*
+ * open_tree(AT_FDCWD, "/proc", 0, 0) returns a dirfd for /proc. If the LKM
+ * only filters the traditional getdents64 path, open_tree-based iteration
+ * may still enumerate hidden entries. We probe by opening /proc via open_tree
+ * and then attempting openat on the resulting fd for each known hidden name.
+ */
+static void probe_p10(void)
+{
+    int dfd = (int)syscall(__NR_open_tree, AT_FDCWD, "/proc", 0, 0);
+    if (dfd < 0) {
+        fprintf(g_out, "    open_tree(/proc) -> %s (unavailable on this kernel)\\n", strerror(errno));
+        return;
+    }
+    const char *names[] = { "susfs_path", "susfs_kstat", "susfs_map",
+                            "susfs_uname", "susfs_opath" };
+    size_t nn = sizeof(names) / sizeof(*names);
+    int hits = 0;
+    for (size_t i = 0; i < nn; i++) {
+        int fd = openat(dfd, names[i], O_PATH | O_CLOEXEC);
+        if (fd >= 0) {
+            struct stat fst;
+            int fr = fstat(fd, &fst);
+            close(fd);
+            if (fr == 0) {
+                fprintf(g_out, "    >> HIT open_tree+openat /proc/%s: reachable via "
+                        "open_tree dirfd (LKM filter bypass)\\n", names[i]);
+                hits++;
+            } else {
+                fprintf(g_out, "    openat /proc/%s -> fd ok but fstat -> %s\\n",
+                        names[i], strerror(errno));
+            }
+        } else {
+            fprintf(g_out, "    openat /proc/%s -> %s\\n", names[i], strerror(errno));
+        }
+    }
+    close(dfd);
+    if (!hits)
+        fprintf(g_out, "    open_tree: no hidden nodes reachable (consistent)\n");
+    g_p10_hits = hits;
+}
 
 static void print_banner(void)
 {
@@ -592,7 +750,8 @@ static void print_banner(void)
 
 static void print_verdict(void)
 {
-	int lkm = g_ph_total || g_race_hit || g_opath_weird || g_ks_lkm > 0 || g_mod_hits;
+	int lkm = g_ph_total || g_race_hit || g_opath_weird || g_ks_lkm > 0 || g_mod_hits
+	         || g_p8_hits || g_p9_weird || g_p10_hits;
 	if (lkm) {
 		fprintf(g_out, "susfs LKM DETECTED (non-root):\n");
 		if (g_ph_total)
@@ -604,7 +763,13 @@ static void print_verdict(void)
 		if (g_ks_lkm > 0)
 			fprintf(g_out, "  - [susfs_guard_lkm]-tagged symbols in kallsyms\n");
 		if (g_mod_hits)
-			fprintf(g_out, "  - susfs line(s) in /proc/modules\n");
+		    fprintf(g_out, "  - susfs line(s) in /proc/modules\n");
+		if (g_p8_hits)
+		    fprintf(g_out, "  - %d name_to_handle_at handle-based bypass hit(s)\n", g_p8_hits);
+		if (g_p9_weird)
+		    fprintf(g_out, "  - %d readlinkat stat/ENOENT inconsistency(s)\n", g_p9_weird);
+		if (g_p10_hits)
+		    fprintf(g_out, "  - %d open_tree dirfd bypass hit(s)\n", g_p10_hits);
 	} else if (g_ks_total > 0) {
 		fprintf(g_out, "No LKM, BUT bare susfs_* kernel symbols visible in kallsyms\n"
 			       "  = BUILT-IN susfs without CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS.\n"
@@ -655,6 +820,12 @@ int main(int argc, char **argv)
 	probe_p6();
 	fprintf(g_out, "\n[P7] syscall latency medians (INFO - compare vs clean baseline)\n");
 	probe_p7();
+	fprintf(g_out, "\n[P8] name_to_handle_at + open_by_handle at bypass\n");
+	probe_p8();
+	fprintf(g_out, "\n[P9] readlinkat stat/ENOENT inconsistency\n");
+	probe_p9();
+	fprintf(g_out, "\n[P10] open_tree dirfd bypass\n");
+	probe_p10();
 	fprintf(g_out, "\n=== VERDICT ===\n");
 	print_verdict();
 	return 0;
@@ -690,6 +861,9 @@ static void run_p4(void)      { probe_p4(); }
 static void run_p5(void)      { probe_p5(); }
 static void run_p6(void)      { probe_p6(); }
 static void run_p7(void)      { probe_p7(); }
+static void run_p8(void)      { probe_p8(); }
+static void run_p9(void)      { probe_p9(); }
+static void run_p10(void)     { probe_p10(); }
 static void run_verdict(void) { print_verdict(); }
 
 JNIEXPORT jstring JNICALL
@@ -725,6 +899,18 @@ Java_com_wildkernels_lkmdetector_MainActivity_nativeP7(JNIEnv *env, jobject th)
 { (void)th; return run_probe_jni(env, run_p7); }
 
 JNIEXPORT jstring JNICALL
+Java_com_wildkernels_lkmdetector_MainActivity_nativeP8(JNIEnv *env, jobject th)
+{ (void)th; return run_probe_jni(env, run_p8); }
+
+JNIEXPORT jstring JNICALL
+Java_com_wildkernels_lkmdetector_MainActivity_nativeP9(JNIEnv *env, jobject th)
+{ (void)th; return run_probe_jni(env, run_p9); }
+
+JNIEXPORT jstring JNICALL
+Java_com_wildkernels_lkmdetector_MainActivity_nativeP10(JNIEnv *env, jobject th)
+{ (void)th; return run_probe_jni(env, run_p10); }
+
+JNIEXPORT jstring JNICALL
 Java_com_wildkernels_lkmdetector_MainActivity_nativeVerdict(JNIEnv *env, jobject th)
 { (void)th; return run_probe_jni(env, run_verdict); }
 
@@ -732,13 +918,14 @@ Java_com_wildkernels_lkmdetector_MainActivity_nativeVerdict(JNIEnv *env, jobject
  * 3 = unsigned out-of-tree module (taint O/E only) */
 static int findings_class(void)
 {
-	if (g_ph_total || g_race_hit || g_opath_weird || g_ks_lkm > 0 || g_mod_hits)
-		return 1;
-	if (g_ks_total > 0)
-		return 2;
-	if (g_oot || g_unsign)
-		return 3;
-	return 0;
+    if (g_ph_total || g_race_hit || g_opath_weird || g_ks_lkm > 0 || g_mod_hits
+        || g_p8_hits || g_p9_weird || g_p10_hits)
+        return 1;
+    if (g_ks_total > 0)
+        return 2;
+    if (g_oot || g_unsign)
+        return 3;
+    return 0;
 }
 
 JNIEXPORT jint JNICALL
@@ -755,6 +942,9 @@ static int probe_result_class(int which)
 	case 4: return g_mod_hits > 0;
 	case 5: return (g_ks_lkm > 0 || g_ks_total > 0);
 	case 6: return g_opath_weird > 0;
+	case 8: return g_p8_hits > 0;
+	case 9: return g_p9_weird > 0;
+	case 10: return g_p10_hits > 0;
 	default: return 0;
 	}
 }
