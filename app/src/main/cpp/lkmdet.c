@@ -40,6 +40,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
+#include <setjmp.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -106,6 +107,38 @@ static int g_p8_hits, g_p9_weird, g_p10_hits;
 static double g_race_sec = 10.0;
 static const char *g_extra_dirs[8];
 static int g_nextra;
+
+/* ---------- seccomp-safe syscall wrapper ---------- */
+/*
+ * Android app seccomp blocks several syscalls we probe with
+ * (name_to_handle_at, open_by_handle_at, open_tree, ...). A SIGSYS would
+ * kill the app. Install a handler that siglongjmps back so we can report
+ * "blocked" instead of crashing.
+ */
+static sigjmp_buf g_sys_jmp;
+static volatile sig_atomic_t g_sys_blocked;
+
+static void sys_handler(int sig)
+{
+    (void)sig;
+    g_sys_blocked = 1;
+    siglongjmp(g_sys_jmp, 1);
+}
+
+static void install_sys_handler(struct sigaction *old_sa)
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = sys_handler;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSYS, &sa, old_sa);
+}
+
+static void restore_sys_handler(const struct sigaction *old_sa)
+{
+    sigaction(SIGSYS, old_sa, NULL);
+}
+
 
 static void *xmalloc(size_t n)
 {
@@ -607,6 +640,17 @@ struct fd_handle {
 
 static void probe_p8(void)
 {
+    struct sigaction old_sa;
+    install_sys_handler(&old_sa);
+    if (sigsetjmp(g_sys_jmp, 1) != 0) {
+        fprintf(g_out, "    name_to_handle_at/open_by_handle_at: blocked by seccomp "
+                "(app sandbox)\\\\n");
+        g_sys_blocked = 0;
+        restore_sys_handler(&old_sa);
+        g_p8_hits = 0;
+        return;
+    }
+    g_sys_blocked = 0;
     const char *nodes[] = {
         "/proc/susfs_path", "/proc/susfs_kstat", "/proc/susfs_map",
         "/proc/susfs_uname", "/proc/susfs_opath"
@@ -646,6 +690,7 @@ static void probe_p8(void)
     }
     if (!hits)
         fprintf(g_out, "    all %zu nodes: name_to_handle_at blocked (consistent)\\n", nn);
+    restore_sys_handler(&old_sa);
     g_p8_hits = hits;
 }
 
@@ -658,6 +703,16 @@ static void probe_p8(void)
  */
 static void probe_p9(void)
 {
+    struct sigaction old_sa;
+    install_sys_handler(&old_sa);
+    if (sigsetjmp(g_sys_jmp, 1) != 0) {
+        fprintf(g_out, "    readlinkat: blocked by seccomp (app sandbox)\\\\n");
+        g_sys_blocked = 0;
+        restore_sys_handler(&old_sa);
+        g_p9_weird = 0;
+        return;
+    }
+    g_sys_blocked = 0;
     const char *nodes[] = {
         "/proc/susfs_path", "/proc/susfs_kstat", "/proc/susfs_map",
         "/proc/susfs_uname", "/proc/susfs_opath"
@@ -693,6 +748,7 @@ static void probe_p9(void)
     }
     if (!hits)
         fprintf(g_out, "    all nodes: stat/open/readlinkat consistent\\n");
+    restore_sys_handler(&old_sa);
     g_p9_weird = hits;
 }
 
@@ -705,6 +761,16 @@ static void probe_p9(void)
  */
 static void probe_p10(void)
 {
+    struct sigaction old_sa;
+    install_sys_handler(&old_sa);
+    if (sigsetjmp(g_sys_jmp, 1) != 0) {
+        fprintf(g_out, "    open_tree/openat: blocked by seccomp (app sandbox)\\\\n");
+        g_sys_blocked = 0;
+        restore_sys_handler(&old_sa);
+        g_p10_hits = 0;
+        return;
+    }
+    g_sys_blocked = 0;
     int dfd = (int)syscall(__NR_open_tree, AT_FDCWD, "/proc", 0, 0);
     if (dfd < 0) {
         fprintf(g_out, "    open_tree(/proc) -> %s (unavailable on this kernel)\\n", strerror(errno));
@@ -735,6 +801,7 @@ static void probe_p10(void)
     close(dfd);
     if (!hits)
         fprintf(g_out, "    open_tree: no hidden nodes reachable (consistent)\n");
+    restore_sys_handler(&old_sa);
     g_p10_hits = hits;
 }
 
