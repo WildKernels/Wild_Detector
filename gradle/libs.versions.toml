@@ -45,7 +45,7 @@ javaxInject = { group = "javax.inject", name = "javax.inject", version = "1" }
 kotlinx-serialization-protobuf = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-protobuf", version = "1.8.0" }
 
 # core bundle
-tabler-icon = { group = "io.github.lyxnx.compose.ui", name = "tabler-icons-android", version = "3.29.0" }
+tabler-icon = { group = "io.github.lyxnx.compose.ui", name = "tabler-icons-android", version = "3.47.0" }
 
 [plugins]
 agp-app = { id = "com.android.application", version.ref = "agp" }
