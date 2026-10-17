@@ -42,7 +42,7 @@ hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", v
 javaxInject = { group = "javax.inject", name = "javax.inject", version = "1" }
 
 # protobuf bundle
-kotlinx-serialization-protobuf = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-protobuf", version = "1.8.0" }
+kotlinx-serialization-protobuf = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-protobuf", version = "1.11.0" }
 
 # core bundle
 tabler-icon = { group = "io.github.lyxnx.compose.ui", name = "tabler-icons-android", version = "3.29.0" }
