@@ -43,11 +43,12 @@ object WildChecks {
      *  server-configured; 2 minutes is the working default here). */
     private const val CLOCK_DRIFT_LIMIT_MS = 120_000L
 
-    private fun det(name: String, group: String, desc: String, evidence: String? = null) =
+    private fun det(name: String, group: String, desc: String, evidence: String? = null, detected: Boolean = true) =
         DetectionData(
             name,
             if (evidence.isNullOrBlank()) desc else "$desc\n\n$evidence",
-            group
+            group,
+            detected
         )
 
     // -----------------------------------------------------------------
@@ -93,13 +94,22 @@ object WildChecks {
                 // not installed — clean for this package
             }
         }
-        if (hits.isEmpty()) return emptyList()
-        return det(
-            "root manager app installed",
-            GROUP_PACKAGES,
-            DESC_PACKAGES,
-            hits.joinToString("\n") { "${it.first} (${it.second})" }
-        ).let(::listOf)
+        return if (hits.isEmpty()) {
+            det(
+                "root manager packages",
+                GROUP_PACKAGES,
+                DESC_PACKAGES,
+                "none of the 9 root-manager packages are installed",
+                detected = false
+            ).let(::listOf)
+        } else {
+            det(
+                "root manager packages",
+                GROUP_PACKAGES,
+                DESC_PACKAGES,
+                hits.joinToString("\n") { "${it.first} (${it.second})" }
+            ).let(::listOf)
+        }
     }
 
     // -----------------------------------------------------------------
@@ -123,7 +133,7 @@ object WildChecks {
      * future Android, the check silently reports nothing rather than
      * failing the scan.
      */
-    private fun mockLocation(context: Context, experimental: Boolean): List<DetectionData> {
+    private fun mockLocation(context: Context): List<DetectionData> {
         val holders = try {
             val opsClass = AppOpsManager::class.java
             val strToOp = opsClass.getMethod("strOpToOp", String::class.java)
@@ -132,24 +142,31 @@ object WildChecks {
             (getPkgs.invoke(context.getSystemService(Context.APP_OPS_SERVICE), opId) as? Array<*>)
                 ?.filterIsInstance<String>().orEmpty()
         } catch (_: Throwable) {
-            if (experimental) {
-                return det(
-                    "mock location check unavailable",
-                    GROUP_MOCK,
-                    DESC_MOCK,
-                    "The app-ops reflection path was blocked on this Android " +
-                        "version, so mock-location providers could not be enumerated."
-                ).let(::listOf)
-            }
-            emptyList()
-        }.filter { it.isNotBlank() }
-        if (holders.isEmpty()) return emptyList()
-        return det(
-            "mock location providers enabled",
-            GROUP_MOCK,
-            DESC_MOCK,
-            holders.joinToString("\n")
-        ).let(::listOf)
+            null
+        }?.filter { it.isNotBlank() }
+        return when {
+            holders == null -> det(
+                "mock location providers",
+                GROUP_MOCK,
+                DESC_MOCK,
+                "the app-ops reflection path was blocked on this Android " +
+                    "version — check unavailable",
+                detected = false
+            ).let(::listOf)
+            holders.isEmpty() -> det(
+                "mock location providers",
+                GROUP_MOCK,
+                DESC_MOCK,
+                "no packages hold the mock-location app-op",
+                detected = false
+            ).let(::listOf)
+            else -> det(
+                "mock location providers",
+                GROUP_MOCK,
+                DESC_MOCK,
+                holders.joinToString("\n")
+            ).let(::listOf)
+        }
     }
 
     // -----------------------------------------------------------------
@@ -194,31 +211,25 @@ object WildChecks {
         throw lastError ?: IllegalStateException("no NTP host reachable")
     }
 
-    private fun timeCheck(experimental: Boolean): List<DetectionData> {
+    private fun timeCheck(): List<DetectionData> {
         return try {
             val offset = sntpOffsetMs()
-            if (abs(offset) > CLOCK_DRIFT_LIMIT_MS) {
-                det(
-                    "device clock deviates from NTP",
-                    GROUP_TIME,
-                    DESC_TIME,
-                    "NTP - device clock = ${offset} ms (limit ±$CLOCK_DRIFT_LIMIT_MS ms)"
-                ).let(::listOf)
-            } else {
-                emptyList()
-            }
+            det(
+                "clock vs NTP",
+                GROUP_TIME,
+                DESC_TIME,
+                "NTP - device clock = ${offset} ms (limit ±$CLOCK_DRIFT_LIMIT_MS ms)",
+                detected = abs(offset) > CLOCK_DRIFT_LIMIT_MS
+            ).let(::listOf)
         } catch (t: Throwable) {
-            if (experimental) {
-                det(
-                    "time verification failed",
-                    GROUP_TIME,
-                    DESC_TIME,
-                    "The SNTP query could not run, so the clock could not be " +
-                        "verified: ${t.javaClass.simpleName}: ${t.message}"
-                ).let(::listOf)
-            } else {
-                emptyList()
-            }
+            det(
+                "clock vs NTP",
+                GROUP_TIME,
+                DESC_TIME,
+                "SNTP query could not run (${t.javaClass.simpleName}: " +
+                    "${t.message}) — the clock could not be verified",
+                detected = false
+            ).let(::listOf)
         }
     }
 
@@ -364,10 +375,12 @@ object WildChecks {
             if (chain == null || chain.isEmpty() || chain[0] !is X509Certificate) {
                 ks.deleteEntry(alias)
                 return det(
-                    "key attestation unavailable",
+                    "hardware key attestation",
                     GROUP_ATTEST,
                     DESC_ATTEST,
-                    "AndroidKeyStore returned no attestation certificate chain."
+                    "AndroidKeyStore returned no attestation certificate " +
+                        "chain — the check could not complete.",
+                    detected = true
                 ).let(::listOf)
             }
             val parsed = parseAttestation(chain[0] as X509Certificate)
@@ -375,16 +388,16 @@ object WildChecks {
 
             if (parsed == null) {
                 return det(
-                    "key attestation chain unreadable",
+                    "hardware key attestation",
                     GROUP_ATTEST,
                     DESC_ATTEST,
                     "The attestation extension (OID $ATTESTATION_OID) could " +
                         "not be parsed — this device either lacks hardware " +
-                        "attestation or returns a non-standard chain."
+                        "attestation or returns a non-standard chain.",
+                    detected = true
                 ).let(::listOf)
             }
 
-            val out = mutableListOf<DetectionData>()
             val evidence = buildString {
                 append("attestationSecurityLevel = ${securityLevelName(parsed.securityLevel)}")
                 if (parsed.verifiedBootState != null) {
@@ -393,37 +406,41 @@ object WildChecks {
                 }
             }
 
+            val anomalies = mutableListOf<String>()
             if (parsed.securityLevel == 0) {
-                out += det(
-                    "keymaster is software-only",
-                    GROUP_ATTEST,
-                    DESC_ATTEST + " A software-level keymaster runs inside " +
-                        "the OS itself, so its guarantees are void on a " +
-                        "compromised device.",
-                    evidence
-                )
+                anomalies += "keymaster is software-only (runs inside the " +
+                    "OS itself, so its guarantees are void on a compromised device)"
             }
             if (parsed.verifiedBootState != null &&
                 (parsed.verifiedBootState != 0 || parsed.deviceLocked == false)
             ) {
-                out += det(
-                    "bootloader not verified (hardware-attested)",
-                    GROUP_ATTEST,
-                    DESC_ATTEST + " The hardware itself reports the boot " +
-                        "chain is not in the Verified/locked state — the same " +
-                        "RootOfTrust record Uber's server validates when the " +
-                        "attestation chain is uploaded. Root hiding cannot " +
-                        "change this.",
-                    evidence
-                )
+                anomalies += "boot chain not verified/locked — the hardware " +
+                    "RootOfTrust record (the same one Uber's server validates " +
+                    "when the attestation chain is uploaded) says the device " +
+                    "is not in the Verified/locked state; root hiding cannot " +
+                    "change this"
             }
-            return out
-        } catch (t: Throwable) {
+
+            val fullEvidence = if (anomalies.isEmpty()) {
+                evidence
+            } else {
+                evidence + "\n\nfindings:\n" +
+                    anomalies.joinToString("\n") { "- $it" }
+            }
             return det(
-                "key attestation check failed",
+                "hardware key attestation",
                 GROUP_ATTEST,
                 DESC_ATTEST,
-                "The check could not run: ${t.javaClass.simpleName}: ${t.message}"
+                fullEvidence,
+                detected = anomalies.isNotEmpty()
+            ).let(::listOf)
+        } catch (t: Throwable) {
+            return det(
+                "hardware key attestation",
+                GROUP_ATTEST,
+                DESC_ATTEST,
+                "The check could not run: ${t.javaClass.simpleName}: ${t.message}",
+                detected = true
             ).let(::listOf)
         }
     }
@@ -433,8 +450,8 @@ object WildChecks {
     fun detect(context: Context, experimental: Boolean): List<DetectionData> {
         val out = mutableListOf<DetectionData>()
         out += managerPackages(context)
-        out += mockLocation(context, experimental)
-        out += timeCheck(experimental)
+        out += mockLocation(context)
+        out += timeCheck()
         out += attestation()
         return out
     }

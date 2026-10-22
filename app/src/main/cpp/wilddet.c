@@ -11,6 +11,11 @@
  *     strings are runtime-encrypted, so each mechanism is ported with the
  *     standard indicator set for that mechanism.
  *
+ * Every check reports exactly one card — hit or pass — so the UI shows what
+ * is passing as well as what fired. Pass cards carry the evidence that the
+ * check actually ran (probed path counts, observed property values,
+ * TracerPid, scan coverage).
+ *
  * Excluded on purpose (not in the Uber app, or not portable):
  *   Play Integrity / SafetyNet (server verdicts), hasMockCertVerifier
  *   (inspects Uber's own runtime), SELinux probes, bootloader property
@@ -43,6 +48,7 @@ const char *wilddet_name(int i);
 const char *wilddet_group(int i);
 const char *wilddet_desc(int i);
 const char *wilddet_evidence(int i);
+int         wilddet_detected(int i);
 void        wilddet_free(void);
 
 typedef struct {
@@ -50,13 +56,14 @@ typedef struct {
     char group[WD_GROUP_MAX];
     char desc[WD_DESC_MAX];
     char *evidence; /* malloc'd, may be NULL */
+    int detected;   /* 1 = hit, 0 = pass / clean */
 } wd_result;
 
 static wd_result g_results[WD_MAX_RESULTS];
 static int g_count = 0;
 
 static void wd_add(const char *name, const char *group, const char *desc,
-                   const char *evidence)
+                   const char *evidence, int detected)
 {
     if (g_count >= WD_MAX_RESULTS)
         return;
@@ -66,6 +73,7 @@ static void wd_add(const char *name, const char *group, const char *desc,
     snprintf(r->group, sizeof(r->group), "%s", group);
     snprintf(r->desc, sizeof(r->desc), "%s", desc);
     r->evidence = (evidence && evidence[0]) ? strdup(evidence) : NULL;
+    r->detected = detected ? 1 : 0;
     g_count++;
 }
 
@@ -111,6 +119,13 @@ static const char *SU_PATHS[] = {
     "/system/etc/.has_su_daemon",
 };
 
+static const char *DESC_SU_PATHS =
+    "Probes the standard root paths for a su binary or SuperSU daemon. "
+    "Uber's RootBeer layer checks exactly these paths as compiled constants "
+    "(CHECK_FOR_BINARY_SU; strings verified in com.ubercab.driver "
+    "4.602.10001). KernelSU/Magisk setups that keep su off these paths do "
+    "not trip this.";
+
 static void check_su_paths(void)
 {
     char ev[4096];
@@ -141,28 +156,26 @@ static void check_su_paths(void)
     }
 
     if (hits) {
-        wd_add("su binary present",
-               "Root binaries",
-               "A su binary (or SuperSU daemon path) exists on a standard root "
-               "path. Uber's RootBeer layer probes exactly these paths as "
-               "compiled constants (CHECK_FOR_BINARY_SU; strings verified in "
-               "com.ubercab.driver 4.602.10001). KernelSU/Magisk setups that "
-               "keep su off these paths do not trip this.",
-               ev);
+        wd_add("su binary scan", "Root binaries", DESC_SU_PATHS, ev, 1);
+    } else {
+        snprintf(ev, sizeof(ev),
+                 "probed %zu standard root paths — none present",
+                 sizeof(SU_PATHS) / sizeof(SU_PATHS[0]));
+        wd_add("su binary scan", "Root binaries", DESC_SU_PATHS, ev, 0);
     }
 }
 
 static void check_superuser_apk(void)
 {
-    if (wd_file_exists("/system/app/Superuser.apk")) {
-        wd_add("Superuser.apk present",
-               "Root binaries",
-               "/system/app/Superuser.apk (RootBeer constant superUserApk, "
-               "compiled into the Uber app) is a legacy Superuser install on "
-               "the system partition — usually a manually patched system "
-               "image.",
-               "/system/app/Superuser.apk");
-    }
+    wd_add("Superuser.apk scan",
+           "Root binaries",
+           "/system/app/Superuser.apk (RootBeer constant superUserApk, "
+           "compiled into the Uber app) is a legacy Superuser install on the "
+           "system partition — usually a manually patched system image.",
+           wd_file_exists("/system/app/Superuser.apk")
+               ? "/system/app/Superuser.apk present"
+               : "probed /system/app/Superuser.apk — not present",
+           wd_file_exists("/system/app/Superuser.apk"));
 }
 
 /* --------------------------------------------------------------------- */
@@ -175,8 +188,15 @@ static void check_exec_probes(void)
      * through PATH with which(1), as RootBeer's helper does. */
     FILE *fp = popen("/system/bin/sh -c 'which su; which magisk; which busybox' 2>/dev/null",
                      "r");
-    if (!fp)
+    if (!fp) {
+        wd_add("root binary in PATH",
+               "Root binaries",
+               "Uber's CHECK_FOR_BINARY_{SU,MAGISK,BUSYBOX} probe (feature "
+               "flags compiled into the DEX): which(1) resolves su, magisk "
+               "or busybox on the app's PATH.",
+               "could not spawn which(1) — check skipped", 0);
         return;
+    }
     char line[512], ev[1024];
     ev[0] = 0;
     int hits = 0;
@@ -194,11 +214,18 @@ static void check_exec_probes(void)
     if (hits) {
         wd_add("root binary in PATH",
                "Root binaries",
-               "which(1) resolved su, magisk or busybox on the app's PATH. "
-               "This is Uber's CHECK_FOR_BINARY_{SU,MAGISK,BUSYBOX} probe "
-               "(feature flags compiled into the DEX): the binary is "
-               "executable from an unprivileged app context.",
-               ev);
+               "Uber's CHECK_FOR_BINARY_{SU,MAGISK,BUSYBOX} probe (feature "
+               "flags compiled into the DEX): which(1) resolved one of the "
+               "root binaries on the app's PATH — the binary is executable "
+               "from an unprivileged app context.",
+               ev, 1);
+    } else {
+        wd_add("root binary in PATH",
+               "Root binaries",
+               "Uber's CHECK_FOR_BINARY_{SU,MAGISK,BUSYBOX} probe (feature "
+               "flags compiled into the DEX): which(1) resolves su, magisk "
+               "or busybox on the app's PATH.",
+               "which su/magisk/busybox — no results on PATH", 0);
     }
 }
 
@@ -208,40 +235,37 @@ static void check_exec_probes(void)
 
 static void check_build_tags(void)
 {
-    char tags[PROP_VALUE_MAX];
-    if (!wd_getprop("ro.build.tags", tags, sizeof(tags)))
-        return;
+    char tags[PROP_VALUE_MAX] = "";
+    wd_getprop("ro.build.tags", tags, sizeof(tags));
 
-    if (strstr(tags, "test-keys") || strstr(tags, "dev-keys")) {
-        char ev[PROP_VALUE_MAX + 64];
-        snprintf(ev, sizeof(ev), "ro.build.tags = %s", tags);
-        wd_add("build signed with test/dev keys",
-               "Build integrity",
-               "ro.build.tags reports test-keys or dev-keys. Uber's RootBeer "
-               "layer ships the test-keys/dev-keys constants (DEX string "
-               "pool) to flag non-release-key builds — i.e. a custom or "
-               "self-signed system image.",
-               ev);
-    }
+    int hit = strstr(tags, "test-keys") != NULL ||
+              strstr(tags, "dev-keys") != NULL;
+    char ev[PROP_VALUE_MAX + 64];
+    snprintf(ev, sizeof(ev), "ro.build.tags = %s", tags[0] ? tags : "(unset)");
+    wd_add("build signing keys",
+           "Build integrity",
+           "ro.build.tags is compared against test-keys/dev-keys. Uber's "
+           "RootBeer layer ships both constants (DEX string pool) to flag "
+           "non-release-key builds — i.e. a custom or self-signed system "
+           "image.",
+           ev, hit);
 }
 
 static void check_build_type(void)
 {
-    char type[PROP_VALUE_MAX];
-    if (!wd_getprop("ro.build.type", type, sizeof(type)))
-        return;
+    char type[PROP_VALUE_MAX] = "";
+    wd_getprop("ro.build.type", type, sizeof(type));
 
-    if (strcmp(type, "userdebug") == 0 || strcmp(type, "eng") == 0) {
-        char ev[PROP_VALUE_MAX + 64];
-        snprintf(ev, sizeof(ev), "ro.build.type = %s", type);
-        wd_add("userdebug/eng build",
-               "Build integrity",
-               "ro.build.type is userdebug or eng. The userdebug constant is "
-               "compiled into Uber's RootBeer-derived check table (adjacent "
-               "to the emulator constants in the DEX string pool). Rooted "
-               "custom ROMs frequently run userdebug builds.",
-               ev);
-    }
+    int hit = (strcmp(type, "userdebug") == 0 || strcmp(type, "eng") == 0);
+    char ev[PROP_VALUE_MAX + 64];
+    snprintf(ev, sizeof(ev), "ro.build.type = %s", type[0] ? type : "(unset)");
+    wd_add("build type",
+           "Build integrity",
+           "ro.build.type is compared against userdebug/eng. The userdebug "
+           "constant is compiled into Uber's RootBeer-derived check table "
+           "(adjacent to the emulator constants in the DEX string pool). "
+           "Rooted custom ROMs frequently run userdebug builds.",
+           ev, hit);
 }
 
 /* --------------------------------------------------------------------- */
@@ -254,45 +278,53 @@ static void check_emulator_props(void)
     ev[0] = 0;
     int hits = 0;
 
-    char hw[PROP_VALUE_MAX];
-    if (wd_getprop("ro.hardware", hw, sizeof(hw))) {
-        char lower[PROP_VALUE_MAX];
-        snprintf(lower, sizeof(lower), "%s", hw);
-        wd_strlower(lower);
-        if (strstr(lower, "goldfish") || strstr(lower, "ranchu") ||
-            strstr(lower, "vbox86")) {
-            size_t at = strlen(ev);
-            snprintf(ev + at, sizeof(ev) - at, "%sro.hardware = %s\n",
-                     hits ? "" : "", hw);
-            hits++;
-        }
+    char hw[PROP_VALUE_MAX] = "";
+    wd_getprop("ro.hardware", hw, sizeof(hw));
+    char dev[PROP_VALUE_MAX] = "";
+    wd_getprop("ro.product.device", dev, sizeof(dev));
+
+    char lower[PROP_VALUE_MAX];
+    snprintf(lower, sizeof(lower), "%s", hw);
+    wd_strlower(lower);
+    if (strstr(lower, "goldfish") || strstr(lower, "ranchu") ||
+        strstr(lower, "vbox86")) {
+        size_t at = strlen(ev);
+        snprintf(ev + at, sizeof(ev) - at, "ro.hardware = %s\n", hw);
+        hits++;
     }
 
-    char dev[PROP_VALUE_MAX];
-    if (wd_getprop("ro.product.device", dev, sizeof(dev))) {
-        char lower[PROP_VALUE_MAX];
-        snprintf(lower, sizeof(lower), "%s", dev);
-        wd_strlower(lower);
-        if (strstr(lower, "vbox86") || strstr(lower, "generic_x86")) {
-            size_t at = strlen(ev);
-            snprintf(ev + at, sizeof(ev) - at, "%sro.product.device = %s\n",
-                     hits ? "" : "", dev);
-            hits++;
-        }
+    snprintf(lower, sizeof(lower), "%s", dev);
+    wd_strlower(lower);
+    if (strstr(lower, "vbox86") || strstr(lower, "generic_x86")) {
+        size_t at = strlen(ev);
+        snprintf(ev + at, sizeof(ev) - at, "ro.product.device = %s\n", dev);
+        hits++;
     }
+
+    char observed[2 * PROP_VALUE_MAX + 64];
+    snprintf(observed, sizeof(observed),
+             "ro.hardware = %s\nro.product.device = %s",
+             hw[0] ? hw : "(unset)", dev[0] ? dev : "(unset)");
 
     if (hits) {
-        /* drop trailing newline */
         size_t at = strlen(ev);
         while (at && (ev[at - 1] == '\n'))
             ev[--at] = 0;
-        wd_add("emulator build fingerprints",
+        wd_add("emulator property fingerprints",
                "Emulator",
                "System properties match the emulator fingerprints compiled "
                "into Uber's RootBeer layer: GOLDFISH / RANCHU (AOSP emulator "
                "hardware), vbox86 (VirtualBox/Genymotion), GENERIC_X86 "
                "(generic x86 builds).",
-               ev);
+               ev, 1);
+    } else {
+        wd_add("emulator property fingerprints",
+               "Emulator",
+               "System properties are compared against the emulator "
+               "fingerprints compiled into Uber's RootBeer layer: GOLDFISH / "
+               "RANCHU (AOSP emulator hardware), vbox86 "
+               "(VirtualBox/Genymotion), GENERIC_X86 (generic x86 builds).",
+               observed, 0);
     }
 }
 
@@ -338,7 +370,7 @@ static void check_emulator_files(void)
         size_t at = strlen(ev);
         while (at && (ev[at - 1] == '\n'))
             ev[--at] = 0;
-        wd_add("emulator artifacts on filesystem",
+        wd_add("emulator filesystem artifacts",
                "Emulator",
                "Device nodes, daemons or init scripts exist that only "
                "emulators create. Uber's RootBeer layer compiles this exact "
@@ -346,7 +378,20 @@ static void check_emulator_files(void)
                "libc_malloc_debug_qemu.so, bin/genymotion-vbox-sf, "
                "bin/genybaseband, fstab.vbox86, init.vbox86.rc, "
                "ueventd.{android_x86,android_x86_64,andy,nox,ttVM_x86}.rc).",
-               ev);
+               ev, 1);
+    } else {
+        snprintf(ev, sizeof(ev),
+                 "probed %zu emulator-only artifacts — none present",
+                 sizeof(EMU_FILES) / sizeof(EMU_FILES[0]));
+        wd_add("emulator filesystem artifacts",
+               "Emulator",
+               "Device nodes, daemons or init scripts are probed that only "
+               "emulators create. Uber's RootBeer layer compiles this exact "
+               "set (verified strings: /dev/qemu_pipe, /dev/socket/qemud, "
+               "libc_malloc_debug_qemu.so, bin/genymotion-vbox-sf, "
+               "bin/genybaseband, fstab.vbox86, init.vbox86.rc, "
+               "ueventd.{android_x86,android_x86_64,andy,nox,ttVM_x86}.rc).",
+               ev, 0);
     }
 }
 
@@ -371,6 +416,7 @@ static void check_mounts(void)
     char ev[4096];
     ev[0] = 0;
     int hits = 0;
+    long scanned = 0;
 
     for (size_t f = 0; f < sizeof(MOUNT_FILES) / sizeof(MOUNT_FILES[0]); f++) {
         FILE *fp = fopen(MOUNT_FILES[f], "r");
@@ -379,13 +425,12 @@ static void check_mounts(void)
         char line[1024];
         while (fgets(line, sizeof(line), fp)) {
             line[strcspn(line, "\n")] = 0;
+            scanned++;
 
             int notable = 0;
-            char reason[64] = "";
 
             if (strstr(line, "magisk")) {
                 notable = 1;
-                snprintf(reason, sizeof(reason), "magisk mount entry");
             } else if (strstr(line, " overlay ")) {
                 /* module mounts: overlay over a system partition, or an
                  * upperdir backed by /data/adb (Magisk modules and
@@ -402,23 +447,15 @@ static void check_mounts(void)
                                f1, f2, f3, f4, m) >= 5)
                         snprintf(mp, sizeof(mp), "%s", m);
                 }
-                if (wd_mountpoint_notable(mp)) {
+                if (wd_mountpoint_notable(mp) ||
+                    strstr(line, "upperdir=/data/adb"))
                     notable = 1;
-                    snprintf(reason, sizeof(reason),
-                             "overlay over %s", mp);
-                } else if (strstr(line, "upperdir=/data/adb")) {
-                    notable = 1;
-                    snprintf(reason, sizeof(reason),
-                             "overlay upperdir under /data/adb");
-                }
             }
 
             if (notable) {
                 size_t at = strlen(ev);
-                int n = snprintf(ev + at, sizeof(ev) - at, "%s%s\n",
-                                 hits ? "" : "", line);
-                (void)n;
-                (void)reason;
+                snprintf(ev + at, sizeof(ev) - at, "%s%s\n",
+                         hits ? "" : "", line);
                 hits++;
                 if (strlen(ev) > sizeof(ev) - 256)
                     break;
@@ -431,7 +468,7 @@ static void check_mounts(void)
         size_t at = strlen(ev);
         while (at && (ev[at - 1] == '\n'))
             ev[--at] = 0;
-        wd_add("root module mounts visible",
+        wd_add("root module mounts",
                "Mount table",
                "The mount table exposes Magisk/module mounts: entries "
                "referencing magisk, or overlay filesystems mounted over "
@@ -441,7 +478,24 @@ static void check_mounts(void)
                "engine reads /proc/mounts at runtime; its comparison strings "
                "are encrypted, so the standard root-mount indicators are "
                "used here.",
-               ev);
+               ev, 1);
+    } else {
+        snprintf(ev, sizeof(ev),
+                 "scanned /proc/self/mounts + /proc/self/mountinfo "
+                 "(%ld entries) — no magisk entries, no overlays over system "
+                 "partitions, no upperdirs under /data/adb",
+                 scanned);
+        wd_add("root module mounts",
+               "Mount table",
+               "The mount table is scanned for Magisk/module mounts: entries "
+               "referencing magisk, or overlay filesystems mounted over "
+               "system partitions / backed by upperdirs under /data/adb "
+               "(where Magisk modules and KernelSU mounts live). This ports "
+               "libse.so's setmntent/getmntent mount scan — Uber's native "
+               "engine reads /proc/mounts at runtime; its comparison strings "
+               "are encrypted, so the standard root-mount indicators are "
+               "used here.",
+               ev, 0);
     }
 }
 
@@ -453,6 +507,8 @@ static const char *HOOK_PATTERNS[] = {
     "frida", "xposed", "edxposed", "lsposed", "substrate",
     "riru", "zygisk", "lsplant", "sandhook",
 };
+
+static int g_phdr_total = 0;
 
 static int wd_name_matches_hook(const char *s, char *which, size_t whichlen)
 {
@@ -474,6 +530,7 @@ static int wd_name_matches_hook(const char *s, char *which, size_t whichlen)
 static int phdr_callback(struct dl_phdr_info *info, size_t size, void *data)
 {
     (void)size;
+    g_phdr_total++;
     char which[64];
     if (wd_name_matches_hook(info->dlpi_name, which, sizeof(which))) {
         char *ev = (char *)data;
@@ -489,12 +546,14 @@ static void check_injected_libs(void)
     char ev[4096];
     ev[0] = 0;
     int hits = 0;
+    long maps_lines = 0;
 
     /* 1) /proc/self/maps — covers libs mapped outside the linker list */
     FILE *fp = fopen("/proc/self/maps", "r");
     if (fp) {
         char line[1024];
         while (fgets(line, sizeof(line), fp)) {
+            maps_lines++;
             char which[64];
             /* basename-ish: last path component in the mapping line */
             char *slash = strrchr(line, '/');
@@ -516,6 +575,7 @@ static void check_injected_libs(void)
     }
 
     /* 2) dl_iterate_phdr — libse.so's own loaded-module walk */
+    g_phdr_total = 0;
     char phdr_ev[4096];
     phdr_ev[0] = 0;
     dl_iterate_phdr(phdr_callback, phdr_ev);
@@ -529,7 +589,7 @@ static void check_injected_libs(void)
         size_t at = strlen(ev);
         while (at && (ev[at - 1] == '\n'))
             ev[--at] = 0;
-        wd_add("injected hook library loaded",
+        wd_add("hooking framework injection",
                "Hooking / injection",
                "A known hooking/injection framework library is loaded into "
                "this process (Frida, Xposed/EdXposed/LSPosed, Substrate, "
@@ -538,7 +598,23 @@ static void check_injected_libs(void)
                "via dl_iterate_phdr + dlopen and /proc reads, with "
                "runtime-encrypted indicator strings; the standard framework "
                "names are used here.",
-               ev);
+               ev, 1);
+    } else {
+        snprintf(ev, sizeof(ev),
+                 "scanned /proc/self/maps (%ld mappings) and %d linker "
+                 "modules via dl_iterate_phdr — no frida / xposed / "
+                 "substrate / riru / zygisk / lsplant / sandhook matches",
+                 maps_lines, g_phdr_total);
+        wd_add("hooking framework injection",
+               "Hooking / injection",
+               "The process's loaded libraries are scanned for known "
+               "hooking/injection frameworks (Frida, Xposed/EdXposed/LSPosed, "
+               "Substrate, Riru, Zygisk, LSPlant, SandHook). Uber's DEX "
+               "contains no hook indicators at all — libse.so does this scan "
+               "natively via dl_iterate_phdr + dlopen and /proc reads, with "
+               "runtime-encrypted indicator strings; the standard framework "
+               "names are used here.",
+               ev, 0);
     }
 }
 
@@ -549,29 +625,27 @@ static void check_injected_libs(void)
 static void check_tracerpid(void)
 {
     FILE *fp = fopen("/proc/self/status", "r");
-    if (!fp)
-        return;
-    char line[512];
     int tracer = 0;
-    while (fgets(line, sizeof(line), fp)) {
-        if (strncmp(line, "TracerPid:", 10) == 0) {
-            tracer = atoi(line + 10);
-            break;
+    if (fp) {
+        char line[512];
+        while (fgets(line, sizeof(line), fp)) {
+            if (strncmp(line, "TracerPid:", 10) == 0) {
+                tracer = atoi(line + 10);
+                break;
+            }
         }
+        fclose(fp);
     }
-    fclose(fp);
 
-    if (tracer > 0) {
-        char ev[640];
-        snprintf(ev, sizeof(ev), "TracerPid = %d", tracer);
-        wd_add("process is being traced",
-               "Process context",
-               "TracerPid in /proc/self/status is nonzero — a debugger or "
-               "ptrace-based injector is attached to this process. libse.so "
-               "guards itself against exactly this (ptrace-capable syscalls, "
-               "mprotect/mlock self-checks, controlled aborts).",
-               ev);
-    }
+    char ev[64];
+    snprintf(ev, sizeof(ev), "TracerPid = %d", tracer);
+    wd_add("debugger attached",
+           "Process context",
+           "TracerPid in /proc/self/status is checked: nonzero means a "
+           "debugger or ptrace-based injector is attached to this process. "
+           "libse.so guards itself against exactly this (ptrace-capable "
+           "syscalls, mprotect/mlock self-checks, controlled aborts).",
+           ev, tracer > 0);
 }
 
 /* --------------------------------------------------------------------- */
@@ -580,9 +654,24 @@ static void check_tracerpid(void)
 
 static void check_ppid(void)
 {
+    static const char *DESC_PARENT =
+        "The parent of an app process is checked against zygote (titled "
+        "zygote64/zygote, binary app_process). A readable parent cmdline "
+        "that is neither means this process was spawned outside the normal "
+        "app lifecycle (e.g. injected runner). libse.so imports getppid for "
+        "exactly this class of process-context check. Because /proc is "
+        "mounted hidepid=2, the parent cmdline is usually unreadable from "
+        "an app — in that case the check is inconclusive and reported as "
+        "clean.";
+
     FILE *fp = fopen("/proc/self/stat", "r");
-    if (!fp)
+    if (!fp) {
+        wd_add("parent process",
+               "Process context",
+               DESC_PARENT,
+               "could not read /proc/self/stat — check skipped", 0);
         return;
+    }
     char stat[1024];
     size_t n = fread(stat, 1, sizeof(stat) - 1, fp);
     fclose(fp);
@@ -590,12 +679,19 @@ static void check_ppid(void)
 
     /* pid (comm) state ppid ... — field 4 is ppid, after the ')' */
     char *close_paren = strrchr(stat, ')');
-    if (!close_paren)
-        return;
-    char state;
     int ppid = 0;
-    if (sscanf(close_paren + 1, " %c %d", &state, &ppid) != 2 || ppid <= 0)
+    if (close_paren) {
+        char state;
+        if (sscanf(close_paren + 1, " %c %d", &state, &ppid) != 2)
+            ppid = 0;
+    }
+    if (ppid <= 0) {
+        wd_add("parent process",
+               "Process context",
+               DESC_PARENT,
+               "could not parse ppid from /proc/self/stat — check skipped", 0);
         return;
+    }
 
     char cmdpath[64];
     snprintf(cmdpath, sizeof(cmdpath), "/proc/%d/cmdline", ppid);
@@ -608,18 +704,21 @@ static void check_ppid(void)
         parent[got] = 0;
     }
 
-    if (!strstr(parent, "zygote")) {
-        char ev[512];
-        snprintf(ev, sizeof(ev), "ppid = %d, parent cmdline = %s", ppid,
-                 parent[0] ? parent : "(unreadable)");
-        wd_add("unexpected parent process",
-               "Process context",
-               "The parent of an app process is always zygote. A different "
-               "parent means this process was spawned outside the normal "
-               "app lifecycle (e.g. injected runner). libse.so imports "
-               "getppid for exactly this class of process-context check.",
-               ev);
+    if (parent[0] == 0) {
+        /* /proc is mounted hidepid=2: another uid's cmdline (zygote's) is
+         * not readable from an app. Inconclusive — not a detection. */
+        char ev[128];
+        snprintf(ev, sizeof(ev),
+                 "ppid = %d; parent cmdline not readable (hidepid) — "
+                 "inconclusive, treated clean", ppid);
+        wd_add("parent process", "Process context", DESC_PARENT, ev, 0);
+        return;
     }
+
+    int hit = !strstr(parent, "zygote") && !strstr(parent, "app_process");
+    char ev[512];
+    snprintf(ev, sizeof(ev), "ppid = %d, parent cmdline = %s", ppid, parent);
+    wd_add("parent process", "Process context", DESC_PARENT, ev, hit);
 }
 
 /* --------------------------------------------------------------------- */
@@ -656,6 +755,7 @@ const char *wilddet_evidence(int i)
 {
     return (i >= 0 && i < g_count && g_results[i].evidence) ? g_results[i].evidence : "";
 }
+int wilddet_detected(int i)       { return (i >= 0 && i < g_count) ? g_results[i].detected : 0; }
 
 void wilddet_free(void)
 {

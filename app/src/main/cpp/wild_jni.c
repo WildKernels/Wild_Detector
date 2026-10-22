@@ -37,9 +37,9 @@ Java_com_reveny_nativecheck_app_Native_getDetections(JNIEnv *env, jobject thiz,
     jclass dcls = (*env)->FindClass(env, "com/reveny/nativecheck/app/DetectionData");
     if (!dcls)
         return NULL;
-    /* DetectionData(name, description, group) */
+    /* DetectionData(name, description, group, detected) */
     jmethodID ctor = (*env)->GetMethodID(env, dcls, "<init>",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
     if (!ctor)
         return NULL;
 
@@ -57,8 +57,9 @@ Java_com_reveny_nativecheck_app_Native_getDetections(JNIEnv *env, jobject thiz,
         jstring jn = (*env)->NewStringUTF(env, wilddet_name(i));
         jstring jd = (*env)->NewStringUTF(env, full ? full : desc);
         jstring jg = (*env)->NewStringUTF(env, wilddet_group(i));
+        jboolean jdet = wilddet_detected(i) ? JNI_TRUE : JNI_FALSE;
 
-        jobject o = (*env)->NewObject(env, dcls, ctor, jn, jd, jg);
+        jobject o = (*env)->NewObject(env, dcls, ctor, jn, jd, jg, jdet);
         if (o)
             (*env)->SetObjectArrayElement(env, arr, i, o);
 

@@ -125,12 +125,21 @@ fun DetectionCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = detection.name,
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = if (detection.detected) "DETECTED" else "PASS",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (detection.detected) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(horizontal = 8.dp)
                 )
                 val rotateAngle by animateFloatAsState(
                     if (expanded) 180f else 0f,

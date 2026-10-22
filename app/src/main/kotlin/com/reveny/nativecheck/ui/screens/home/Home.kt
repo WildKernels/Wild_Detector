@@ -81,10 +81,12 @@ fun Home(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
 
-    // Detection cards, grouped by check category (first-seen order preserved)
+    // Detection cards, grouped by check category (first-seen order preserved,
+    // hits before passes within each group)
     val grouped = remember(detections) {
         val order = LinkedHashMap<String, MutableList<DetectionData>>()
         detections.forEach { order.getOrPut(it.group) { mutableListOf() }.add(it) }
+        order.values.forEach { it.sortByDescending { d -> d.detected } }
         order
     }
 
@@ -129,7 +131,7 @@ fun Home(
         ) {
             item {
                 CheckCard(
-                    isDetected = detections.isNotEmpty(),
+                    isDetected = detections.any { it.detected },
                 )
             }
 
