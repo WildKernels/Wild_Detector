@@ -20,6 +20,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.MaterialTheme.typography
 import androidx.compose.material3.Scaffold
@@ -27,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -53,6 +55,16 @@ import compose.icons.tablericons.Outline
 import compose.icons.tablericons.filled.BrandGithub
 import compose.icons.tablericons.outline.Refresh
 
+@Composable
+private fun GroupHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp, start = 4.dp)
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Home(
@@ -69,6 +81,13 @@ fun Home(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
 
+    // Detection cards, grouped by check category (first-seen order preserved)
+    val grouped = remember(detections) {
+        val order = LinkedHashMap<String, MutableList<DetectionData>>()
+        detections.forEach { order.getOrPut(it.group) { mutableListOf() }.add(it) }
+        order
+    }
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
@@ -82,7 +101,12 @@ fun Home(
                     IconButton(
                         onClick = {
                             // force a fresh scan with the current settings
-                            viewModel.performTask(context, context.packageManager, false, force = true)
+                            viewModel.performTask(
+                                context,
+                                context.packageManager,
+                                appSettings.enableExperimentalDetections,
+                                force = true
+                            )
                         },
                         modifier = Modifier.padding(end = 4.dp)
                     ) {
@@ -109,9 +133,17 @@ fun Home(
                 )
             }
 
-            // Adding detection cards
-            items(detections) { detection ->
-                DetectionCard(detection = detection)
+            // Detection cards by group
+            grouped.forEach { (group, groupDetections) ->
+                item(key = "header_$group") {
+                    GroupHeader(group)
+                }
+                items(
+                    groupDetections,
+                    key = { "detection_${group}_${it.name}" }
+                ) { detection ->
+                    DetectionCard(detection = detection)
+                }
             }
 
             item {

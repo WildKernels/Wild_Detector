@@ -47,9 +47,9 @@ android {
 
     signingConfigs {
         release {
-            storeFile file("../lkmdet.keystore")
+            storeFile file("../wilddet.keystore")
             storePassword "android"
-            keyAlias "lkmdet"
+            keyAlias "wilddet"
             keyPassword "android"
         }
     }

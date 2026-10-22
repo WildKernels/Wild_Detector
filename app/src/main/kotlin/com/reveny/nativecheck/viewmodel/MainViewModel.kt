@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.reveny.nativecheck.R
 import com.reveny.nativecheck.app.DetectionData
 import com.reveny.nativecheck.app.Native
+import com.reveny.nativecheck.app.WildChecks
 import com.reveny.nativecheck.repository.AppSettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,7 +83,11 @@ class MainViewModel() : ViewModel() {
     private suspend fun getDetections(context: Context, packageManager: PackageManager, enableExperimental: Boolean): List<DetectionData> {
         return withContext(Dispatchers.IO) {
             val native = Native()
-            native.getDetections(context, packageManager, enableExperimental).toList()
+            // native engine (DEX/RootBeer constants + libse.so mechanisms)
+            // + Kotlin-side ports (manager packages, mock location, NTP
+            // time check, hardware key attestation)
+            native.getDetections(context, packageManager, enableExperimental).toList() +
+                WildChecks.detect(context, enableExperimental)
         }
     }
 
